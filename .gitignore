@@ -30,3 +30,6 @@ Carthage/Build
 
 fastlane/README.md
 .build
+
+# Codebuddy
+.codebuddy/plan
