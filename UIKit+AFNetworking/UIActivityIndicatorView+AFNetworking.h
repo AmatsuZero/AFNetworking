@@ -27,6 +27,8 @@
 
 #import <UIKit/UIKit.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 /**
  This category adds methods to the UIKit framework's `UIActivityIndicatorView` class. The methods in this category provide support for automatically starting and stopping animation depending on the loading state of a session task.
  */
@@ -44,5 +46,7 @@
 - (void)setAnimatingWithStateOfTask:(nullable NSURLSessionTask *)task;
 
 @end
+
+NS_ASSUME_NONNULL_END
 
 #endif

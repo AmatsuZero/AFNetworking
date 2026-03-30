@@ -32,7 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
 typedef NS_ENUM(NSInteger, AFImageDownloadPrioritization) {
     AFImageDownloadPrioritizationFIFO,
     AFImageDownloadPrioritizationLIFO
-};
+} NS_SWIFT_NAME(AFImageDownloader.Prioritization);
 
 /**
  The `AFImageDownloadReceipt` is an object vended by the `AFImageDownloader` when starting a data task. It can be used to cancel active tasks running on the `AFImageDownloader` session. As a general rule, image data tasks should be cancelled using the `AFImageDownloadReceipt` instead of calling `cancel` directly on the `task` itself. The `AFImageDownloader` is optimized to handle duplicate task scenarios as well as pending versus active downloads.

@@ -46,4 +46,44 @@
     #define AF_CAN_INCLUDE_SESSION_TASK_METRICS 1
 #endif
 
+// MARK: - Swift 现代化兼容性宏
+
+// NS_SWIFT_SENDABLE: 标记类型为 Swift Sendable，用于并发安全
+// 需要 Xcode 14+ / Swift 5.7+ / clang 属性 swift_attr 支持
+#ifndef AF_SWIFT_SENDABLE
+    #if defined(__has_attribute) && __has_attribute(swift_attr)
+        #define AF_SWIFT_SENDABLE __attribute__((swift_attr("@Sendable")))
+    #else
+        #define AF_SWIFT_SENDABLE
+    #endif
+#endif
+
+// NS_SWIFT_ASYNC_NAME: 为方法提供 Swift async/await 版本
+// 需要 SDK 中定义了 NS_SWIFT_ASYNC_NAME 宏（Xcode 13+ / Swift 5.5+）
+#ifndef AF_SWIFT_ASYNC_NAME
+    #if defined(NS_SWIFT_ASYNC_NAME)
+        #define AF_SWIFT_ASYNC_NAME(...) NS_SWIFT_ASYNC_NAME(__VA_ARGS__)
+    #else
+        #define AF_SWIFT_ASYNC_NAME(...)
+    #endif
+#endif
+
+// NS_SWIFT_ASYNC: 指定 completion handler 参数索引以生成 async 版本
+#ifndef AF_SWIFT_ASYNC
+    #if defined(NS_SWIFT_ASYNC)
+        #define AF_SWIFT_ASYNC(...) NS_SWIFT_ASYNC(__VA_ARGS__)
+    #else
+        #define AF_SWIFT_ASYNC(...)
+    #endif
+#endif
+
+// NS_SWIFT_DISABLE_ASYNC: 禁止自动生成 async 版本
+#ifndef AF_SWIFT_DISABLE_ASYNC
+    #if defined(NS_SWIFT_DISABLE_ASYNC)
+        #define AF_SWIFT_DISABLE_ASYNC NS_SWIFT_DISABLE_ASYNC
+    #else
+        #define AF_SWIFT_DISABLE_ASYNC
+    #endif
+#endif
+
 #endif /* AFCompatibilityMacros_h */

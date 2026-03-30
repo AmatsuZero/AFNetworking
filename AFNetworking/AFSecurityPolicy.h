@@ -22,11 +22,20 @@
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 
+// 内联 AF_SWIFT_SENDABLE 定义，避免对 AFCompatibilityMacros.h 的依赖
+#ifndef AF_SWIFT_SENDABLE
+    #if defined(__has_attribute) && __has_attribute(swift_attr)
+        #define AF_SWIFT_SENDABLE __attribute__((swift_attr("@Sendable")))
+    #else
+        #define AF_SWIFT_SENDABLE
+    #endif
+#endif
+
 typedef NS_ENUM(NSUInteger, AFSSLPinningMode) {
     AFSSLPinningModeNone,
     AFSSLPinningModePublicKey,
     AFSSLPinningModeCertificate,
-};
+} NS_SWIFT_NAME(AFSecurityPolicy.PinningMode);
 
 /**
  `AFSecurityPolicy` evaluates server trust against pinned X.509 certificates and public keys over secure connections.
@@ -36,7 +45,7 @@ typedef NS_ENUM(NSUInteger, AFSSLPinningMode) {
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface AFSecurityPolicy : NSObject <NSSecureCoding, NSCopying>
+@interface AFSecurityPolicy : NSObject <NSSecureCoding, NSCopying> AF_SWIFT_SENDABLE
 
 /**
  The criteria by which server trust should be evaluated against the pinned SSL certificates. Defaults to `AFSSLPinningModeNone`.

@@ -29,7 +29,7 @@ typedef NS_ENUM(NSInteger, AFNetworkReachabilityStatus) {
     AFNetworkReachabilityStatusNotReachable     = 0,
     AFNetworkReachabilityStatusReachableViaWWAN = 1,
     AFNetworkReachabilityStatusReachableViaWiFi = 2,
-};
+} NS_SWIFT_NAME(AFNetworkReachabilityManager.Status);
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -210,7 +210,7 @@ FOUNDATION_EXPORT NSString * const AFNetworkingReachabilityNotificationStatusIte
 /**
  Returns a localized string representation of an `AFNetworkReachabilityStatus` value.
  */
-FOUNDATION_EXPORT NSString * AFStringFromNetworkReachabilityStatus(AFNetworkReachabilityStatus status);
+FOUNDATION_EXPORT NSString * AFStringFromNetworkReachabilityStatus(AFNetworkReachabilityStatus status) NS_SWIFT_NAME(AFNetworkReachabilityManager.string(from:));
 
 NS_ASSUME_NONNULL_END
 #endif
