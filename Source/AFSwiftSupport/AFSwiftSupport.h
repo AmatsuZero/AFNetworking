@@ -1,4 +1,4 @@
-// AFTestCase.h
+// AFSwiftSupport.h
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,27 +19,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#import <XCTest/XCTest.h>
+#import <Foundation/Foundation.h>
 
-SecTrustRef AFUTTrustChainForCertsInDirectory(NSString *directoryPath);
+#ifndef _AFSWIFTSUPPORT_
+#define _AFSWIFTSUPPORT_
 
-/// 返回包含测试资源的 NSBundle
-/// SPM 环境下使用 SWIFTPM_MODULE_BUNDLE，Xcode 环境下使用 bundleForClass
-NSBundle *AFTestResourceBundle(void);
+// 请求描述与配置
+#import "AFHTTPMethod.h"
+#import "AFHTTPHeaders.h"
+#import "AFRequestDescriptor.h"
+#import "AFRequestContext.h"
 
-@interface AFTestCase : XCTestCase
+// 拦截器与重试
+#import "AFRequestInterceptor.h"
 
-@property (nonatomic, strong, readonly) NSURL *baseURL;
-@property (nonatomic, strong, readonly) NSURL *pngURL;
-@property (nonatomic, strong, readonly) NSURL *jpegURL;
-@property (nonatomic, strong, readonly) NSURL *delayURL;
-- (NSURL *)URLWithStatusCode:(NSInteger)statusCode;
+// 响应结果
+#import "AFDataResponse.h"
+#import "AFDownloadResponse.h"
 
-@property (nonatomic, assign) NSTimeInterval networkTimeout;
+// 验证器
+#import "AFResponseValidator.h"
 
-- (void)waitForExpectationsWithCommonTimeout;
-- (void)waitForExpectationsWithCommonTimeoutUsingHandler:(XCWaitCompletionHandler)handler;
-- (NSData *)archivedDataWithRootObject:(id)object;
-- (id)unarchivedObjectOfClass:(Class)class fromData:(NSData *)data;
+// 事件监控
+#import "AFEventMonitor.h"
 
-@end
+// 多 Host 信任管理
+#import "AFServerTrustManager.h"
+
+#endif /* _AFSWIFTSUPPORT_ */

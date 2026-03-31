@@ -21,6 +21,16 @@
 
 #import "AFTestCase.h"
 
+#if defined(SWIFTPM_MODULE_BUNDLE)
+NSBundle *AFTestResourceBundle(void) {
+    return SWIFTPM_MODULE_BUNDLE;
+}
+#else
+NSBundle *AFTestResourceBundle(void) {
+    return [NSBundle bundleForClass:[AFTestCase class]];
+}
+#endif
+
 SecTrustRef AFUTTrustChainForCertsInDirectory(NSString *directoryPath) {
     NSArray *certFileNames = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:directoryPath error:nil];
     NSMutableArray *certs  = [NSMutableArray arrayWithCapacity:[certFileNames count]];

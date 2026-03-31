@@ -1,4 +1,4 @@
-// swift-tools-version:5.0
+// swift-tools-version:5.3
 //
 //  Package.swift
 //
@@ -26,12 +26,57 @@
 import PackageDescription
 
 let package = Package(name: "AFNetworking",
-                      platforms: [.macOS(.v10_10),
-                                  .iOS(.v9),
-                                  .tvOS(.v9),
-                                  .watchOS(.v2)],
+                      platforms: [.macOS(.v10_15),
+                                  .iOS(.v13),
+                                  .tvOS(.v13),
+                                  .watchOS(.v6)],
                       products: [.library(name: "AFNetworking",
-                                          targets: ["AFNetworking"])],
+                                          targets: ["AFNetworking"]),
+                                 .library(name: "AFNetworkingSwift",
+                                          targets: ["AFNetworkingSwift"])],
                       targets: [.target(name: "AFNetworking",
                                         path: "AFNetworking",
-                                        publicHeadersPath: "")])
+                                        publicHeadersPath: ""),
+                                .target(name: "AFSwiftSupport",
+                                        dependencies: ["AFNetworking"],
+                                        path: "Source/AFSwiftSupport",
+                                        publicHeadersPath: ""),
+                                .target(name: "AFNetworkingSwift",
+                                        dependencies: ["AFNetworking", "AFSwiftSupport"],
+                                        path: "Source/AFNetworkingSwift"),
+                                .testTarget(name: "AFNetworkingSwiftTests",
+                                            dependencies: ["AFNetworkingSwift", "AFNetworking", "AFSwiftSupport"],
+                                            path: "Tests/SwiftTests",
+                                            exclude: ["AlamofireTestMapping.md", "ReleaseBaseline.md"]),
+                                .testTarget(name: "AFNetworkingTests",
+                                            dependencies: ["AFNetworking"],
+                                            path: "Tests/Tests",
+                                            exclude: [
+                                                "AFAutoPurgingImageCacheTests.m",
+                                                "AFImageDownloaderTests.m",
+                                                "AFNetworkActivityManagerTests.m",
+                                                "AFUIActivityIndicatorViewTests.m",
+                                                "AFUIButtonTests.m",
+                                                "AFUIImageViewTests.m",
+                                                "AFUIRefreshControlTests.m",
+                                                "AFWKWebViewTests.m"
+                                            ],
+                                            resources: [
+                                                .copy("HTTPBinOrgServerTrustChain"),
+                                                .copy("ADNNetServerTrustChain"),
+                                                .copy("GoogleComServerTrustChainPath1"),
+                                                .copy("GoogleComServerTrustChainPath2"),
+                                                .process("httpbinorg_02182021.cer"),
+                                                .process("Amazon.cer"),
+                                                .process("Amazon Root CA 1.cer"),
+                                                .process("Starfield Services Root Certificate Authority - G2.cer"),
+                                                .process("AltName.cer"),
+                                                .process("NoDomains.cer"),
+                                                .process("foobar.com.cer"),
+                                                .process("google.com.cer"),
+                                                .process("GoogleInternetAuthorityG2.cer"),
+                                                .process("Equifax_Secure_Certificate_Authority_Root.cer"),
+                                                .process("GeoTrust_Global_CA-cross.cer"),
+                                                .process("GeoTrust_Global_CA_Root.cer"),
+                                                .process("logo.png")
+                                            ])])

@@ -1,4 +1,4 @@
-// AFTestCase.h
+// AFHTTPMethod.m
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,27 +19,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#import <XCTest/XCTest.h>
+#import "AFHTTPMethod.h"
 
-SecTrustRef AFUTTrustChainForCertsInDirectory(NSString *directoryPath);
-
-/// 返回包含测试资源的 NSBundle
-/// SPM 环境下使用 SWIFTPM_MODULE_BUNDLE，Xcode 环境下使用 bundleForClass
-NSBundle *AFTestResourceBundle(void);
-
-@interface AFTestCase : XCTestCase
-
-@property (nonatomic, strong, readonly) NSURL *baseURL;
-@property (nonatomic, strong, readonly) NSURL *pngURL;
-@property (nonatomic, strong, readonly) NSURL *jpegURL;
-@property (nonatomic, strong, readonly) NSURL *delayURL;
-- (NSURL *)URLWithStatusCode:(NSInteger)statusCode;
-
-@property (nonatomic, assign) NSTimeInterval networkTimeout;
-
-- (void)waitForExpectationsWithCommonTimeout;
-- (void)waitForExpectationsWithCommonTimeoutUsingHandler:(XCWaitCompletionHandler)handler;
-- (NSData *)archivedDataWithRootObject:(id)object;
-- (id)unarchivedObjectOfClass:(Class)class fromData:(NSData *)data;
-
-@end
+AFHTTPMethod const AFHTTPMethodGET     = @"GET";
+AFHTTPMethod const AFHTTPMethodHEAD    = @"HEAD";
+AFHTTPMethod const AFHTTPMethodPOST    = @"POST";
+AFHTTPMethod const AFHTTPMethodPUT     = @"PUT";
+AFHTTPMethod const AFHTTPMethodPATCH   = @"PATCH";
+AFHTTPMethod const AFHTTPMethodDELETE  = @"DELETE";
+AFHTTPMethod const AFHTTPMethodCONNECT = @"CONNECT";
+AFHTTPMethod const AFHTTPMethodOPTIONS = @"OPTIONS";
+AFHTTPMethod const AFHTTPMethodTRACE   = @"TRACE";

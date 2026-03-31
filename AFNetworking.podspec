@@ -8,17 +8,32 @@ Pod::Spec.new do |s|
   s.authors  = { 'Mattt Thompson' => 'm@mattt.me' }
   s.source   = { :git => 'https://github.com/AFNetworking/AFNetworking.git', :tag => s.version }
 
-  s.ios.deployment_target = '9.0'
-  s.osx.deployment_target = '10.10'
-  s.watchos.deployment_target = '2.0'
-  s.tvos.deployment_target = '9.0'
+  s.ios.deployment_target = '13.0'
+  s.osx.deployment_target = '10.15'
+  s.watchos.deployment_target = '6.0'
+  s.tvos.deployment_target = '13.0'
 
-  s.ios.pod_target_xcconfig = { 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.alamofire.AFNetworking' }
-  s.osx.pod_target_xcconfig = { 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.alamofire.AFNetworking' }
-  s.watchos.pod_target_xcconfig = { 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.alamofire.AFNetworking-watchOS' }
-  s.tvos.pod_target_xcconfig = { 'PRODUCT_BUNDLE_IDENTIFIER' => 'com.alamofire.AFNetworking' }
+  s.pod_target_xcconfig = {
+    'PRODUCT_BUNDLE_IDENTIFIER' => 'com.alamofire.AFNetworking',
+    'SWIFT_STRICT_CONCURRENCY' => 'minimal',
+    'OTHER_SWIFT_FLAGS' => '-swift-version 5',
+    'DEFINES_MODULE' => 'YES',
+    'HEADER_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}"'
+  }
+  s.user_target_xcconfig = {
+    'HEADER_SEARCH_PATHS' => '"${PODS_ROOT}/Headers/Public/AFNetworking"',
+    'OTHER_CFLAGS' => '$(inherited) -Wno-strict-prototypes'
+  }
+  s.watchos.pod_target_xcconfig = {
+    'PRODUCT_BUNDLE_IDENTIFIER' => 'com.alamofire.AFNetworking-watchOS'
+  }
 
-  s.source_files = 'AFNetworking/AFNetworking.h'
+  s.swift_versions = ['5.5', '5.6', '5.7', '5.8', '5.9', '5.10', '6.0']
+
+  # Note: AFNetworking/AFNetworking.h is not listed here because CocoaPods generates
+  # its own umbrella header (AFNetworking-umbrella.h). A compatibility header named
+  # AFNetworking.h is provided via the SwiftSupport subspec to satisfy the Swift
+  # compiler's generated -Swift.h bridging header import.
 
   s.subspec 'Serialization' do |ss|
     ss.source_files = 'AFNetworking/AFURL{Request,Response}Serialization.{h,m}'
@@ -29,10 +44,6 @@ Pod::Spec.new do |s|
   end
 
   s.subspec 'Reachability' do |ss|
-    ss.ios.deployment_target = '9.0'
-    ss.osx.deployment_target = '10.10'
-    ss.tvos.deployment_target = '9.0'
-
     ss.source_files = 'AFNetworking/AFNetworkReachabilityManager.{h,m}'
   end
 
@@ -47,10 +58,27 @@ Pod::Spec.new do |s|
   end
 
   s.subspec 'UIKit' do |ss|
-    ss.ios.deployment_target = '9.0'
-    ss.tvos.deployment_target = '9.0'
+    ss.ios.deployment_target = '13.0'
+    ss.tvos.deployment_target = '13.0'
     ss.dependency 'AFNetworking/NSURLSession'
 
     ss.source_files = 'UIKit+AFNetworking'
+  end
+
+  s.subspec 'SwiftSupport' do |ss|
+    ss.dependency 'AFNetworking/NSURLSession'
+
+    ss.source_files = 'Source/AFSwiftSupport/**/*.{h,m}'
+    ss.public_header_files = 'Source/AFSwiftSupport/**/*.h'
+  end
+
+  s.subspec 'Swift' do |ss|
+    ss.dependency 'AFNetworking/SwiftSupport'
+
+    ss.source_files = 'Source/AFNetworkingSwift/**/*.swift'
+
+    ss.test_spec 'SwiftTests' do |ts|
+      ts.source_files = 'Tests/SwiftTests/**/*.swift'
+    end
   end
 end

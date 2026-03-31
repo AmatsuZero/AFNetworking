@@ -1,4 +1,4 @@
-// AFTestCase.h
+// AFHTTPMethod.h
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,27 +19,30 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#import <XCTest/XCTest.h>
+#import <Foundation/Foundation.h>
 
-SecTrustRef AFUTTrustChainForCertsInDirectory(NSString *directoryPath);
+NS_ASSUME_NONNULL_BEGIN
 
-/// 返回包含测试资源的 NSBundle
-/// SPM 环境下使用 SWIFTPM_MODULE_BUNDLE，Xcode 环境下使用 bundleForClass
-NSBundle *AFTestResourceBundle(void);
+/// HTTP 请求方法的类型安全封装，对齐 Alamofire 的 HTTPMethod 设计。
+typedef NSString *AFHTTPMethod NS_TYPED_EXTENSIBLE_ENUM NS_SWIFT_NAME(HTTPMethod);
 
-@interface AFTestCase : XCTestCase
+/// HTTP GET 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodGET;
+/// HTTP HEAD 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodHEAD;
+/// HTTP POST 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodPOST;
+/// HTTP PUT 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodPUT;
+/// HTTP PATCH 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodPATCH;
+/// HTTP DELETE 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodDELETE;
+/// HTTP CONNECT 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodCONNECT;
+/// HTTP OPTIONS 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodOPTIONS;
+/// HTTP TRACE 方法
+FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodTRACE;
 
-@property (nonatomic, strong, readonly) NSURL *baseURL;
-@property (nonatomic, strong, readonly) NSURL *pngURL;
-@property (nonatomic, strong, readonly) NSURL *jpegURL;
-@property (nonatomic, strong, readonly) NSURL *delayURL;
-- (NSURL *)URLWithStatusCode:(NSInteger)statusCode;
-
-@property (nonatomic, assign) NSTimeInterval networkTimeout;
-
-- (void)waitForExpectationsWithCommonTimeout;
-- (void)waitForExpectationsWithCommonTimeoutUsingHandler:(XCWaitCompletionHandler)handler;
-- (NSData *)archivedDataWithRootObject:(id)object;
-- (id)unarchivedObjectOfClass:(Class)class fromData:(NSData *)data;
-
-@end
+NS_ASSUME_NONNULL_END
