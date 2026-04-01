@@ -25,7 +25,7 @@ import AFNetworking
 #endif
 
 /// Data 请求类型，对齐 Alamofire 的 `DataRequest`。
-public final class DataRequest: Request, @unchecked Sendable {
+public class DataRequest: Request, @unchecked Sendable {
 
     /// 共享默认 JSON 解码器，避免每次调用重新分配
     private static let defaultDecoder = JSONDecoder()

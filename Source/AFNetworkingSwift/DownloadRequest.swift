@@ -72,28 +72,96 @@ public final class DownloadRequest: Request, @unchecked Sendable {
 
     // MARK: - 响应处理
 
-    /// 下载完成回调
-    /// - Parameters:
-    ///   - queue: 回调队列
-    ///   - completionHandler: 完成回调
-    @discardableResult
-    public func response(queue: DispatchQueue? = nil,
-                         completionHandler: @escaping @Sendable (DownloadResponse<URL?>) -> Void) -> Self {
+    /// 通用下载响应序列化骨架：注册完成回调 → 验证 → 序列化 → 构建 DownloadResponse → 分发。
+    private func appendDownloadResponseSerializer<T>(
+        queue: DispatchQueue?,
+        serialize: @escaping @Sendable (_ fileURL: URL?, _ error: Error?) -> Result<T, Error>,
+        completionHandler: @escaping @Sendable (DownloadResponse<T>) -> Void
+    ) {
         session?.registerDownloadCompletion(for: self) { [self] in
             let validationError = self.performValidation(data: nil)
             let finalError = validationError ?? self.context.error
+            let result = serialize(self.context.fileURL, finalError)
 
-            let response = DownloadResponse<URL?>(
+            let response = DownloadResponse<T>(
                 request: self.context.currentRequest,
                 response: self.context.response,
                 fileURL: self.context.fileURL,
                 resumeData: nil,
                 metrics: self.metricsIfAvailable,
                 serializationDuration: 0,
-                result: finalError == nil ? .success(self.context.fileURL) : .failure(finalError!)
+                result: result
             )
             self.dispatchCallback(on: queue) { completionHandler(response) }
         }
+    }
+
+    /// 下载完成回调（返回文件 URL）
+    @discardableResult
+    public func response(queue: DispatchQueue? = nil,
+                         completionHandler: @escaping @Sendable (DownloadResponse<URL?>) -> Void) -> Self {
+        appendDownloadResponseSerializer(queue: queue, serialize: { fileURL, error in
+            error == nil ? .success(fileURL) : .failure(error!)
+        }, completionHandler: completionHandler)
+        return self
+    }
+
+    /// 读取下载文件内容为 Data
+    @discardableResult
+    public func responseData(queue: DispatchQueue? = nil,
+                             completionHandler: @escaping @Sendable (DownloadResponse<Data>) -> Void) -> Self {
+        appendDownloadResponseSerializer(queue: queue, serialize: { fileURL, error in
+            if let error { return .failure(error) }
+            guard let url = fileURL else {
+                return .failure(AFError.responseSerializationFailed(reason: "Download fileURL was nil"))
+            }
+            do {
+                return .success(try Data(contentsOf: url))
+            } catch {
+                return .failure(error)
+            }
+        }, completionHandler: completionHandler)
+        return self
+    }
+
+    /// 读取下载文件内容为 String
+    @discardableResult
+    public func responseString(queue: DispatchQueue? = nil,
+                               encoding: String.Encoding = .utf8,
+                               completionHandler: @escaping @Sendable (DownloadResponse<String>) -> Void) -> Self {
+        appendDownloadResponseSerializer(queue: queue, serialize: { fileURL, error in
+            if let error { return .failure(error) }
+            guard let url = fileURL else {
+                return .failure(AFError.responseSerializationFailed(reason: "Download fileURL was nil"))
+            }
+            do {
+                let data = try Data(contentsOf: url)
+                return .success(String(data: data, encoding: encoding) ?? "")
+            } catch {
+                return .failure(error)
+            }
+        }, completionHandler: completionHandler)
+        return self
+    }
+
+    /// 将下载文件内容反序列化为 Decodable 模型
+    @discardableResult
+    public func responseDecodable<T: Decodable & Sendable>(of type: T.Type = T.self,
+                                                           queue: DispatchQueue? = nil,
+                                                           decoder: JSONDecoder = JSONDecoder(),
+                                                           completionHandler: @escaping @Sendable (DownloadResponse<T>) -> Void) -> Self {
+        appendDownloadResponseSerializer(queue: queue, serialize: { fileURL, error in
+            if let error { return .failure(error) }
+            guard let url = fileURL else {
+                return .failure(AFError.responseSerializationFailed(reason: "Download fileURL was nil"))
+            }
+            do {
+                let data = try Data(contentsOf: url)
+                return .success(try decoder.decode(T.self, from: data))
+            } catch {
+                return .failure(error)
+            }
+        }, completionHandler: completionHandler)
         return self
     }
 }

@@ -93,6 +93,12 @@ public class Session: @unchecked Sendable {
     /// Session 级别的服务器信任管理器
     public let serverTrustManager: ServerTrustManager?
 
+    /// 缓存响应处理器
+    public let cachedResponseHandler: (any CachedResponseHandler)?
+
+    /// 重定向处理器
+    public let redirectHandler: (any RedirectHandler)?
+
     /// 内部调度队列 — 协调 ObjC `AFHTTPSessionManager` API 调用，与 Actor 状态保护正交
     private let rootQueue: DispatchQueue
 
@@ -109,6 +115,8 @@ public class Session: @unchecked Sendable {
     public init(configuration: URLSessionConfiguration = .default,
                 interceptor: (any RequestIntercepting)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
+                cachedResponseHandler: (any CachedResponseHandler)? = nil,
+                redirectHandler: (any RedirectHandler)? = nil,
                 eventMonitor: EventMonitor = EventMonitor()) {
         self.rootQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.\(UUID().uuidString)")
         self.sessionManager = AFHTTPSessionManager(sessionConfiguration: configuration)
@@ -116,19 +124,41 @@ public class Session: @unchecked Sendable {
         self.sessionManager.completionQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.completion.\(UUID().uuidString)")
         self.interceptor = interceptor
         self.serverTrustManager = serverTrustManager
+        self.cachedResponseHandler = cachedResponseHandler
+        self.redirectHandler = redirectHandler
         self.eventMonitor = eventMonitor
+        setupSessionManagerBlocks()
     }
 
     /// 使用现有 AFHTTPSessionManager 创建 Session
     public init(sessionManager: AFHTTPSessionManager,
                 interceptor: (any RequestIntercepting)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
+                cachedResponseHandler: (any CachedResponseHandler)? = nil,
+                redirectHandler: (any RedirectHandler)? = nil,
                 eventMonitor: EventMonitor = EventMonitor()) {
         self.rootQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.\(UUID().uuidString)")
         self.sessionManager = sessionManager
         self.interceptor = interceptor
         self.serverTrustManager = serverTrustManager
+        self.cachedResponseHandler = cachedResponseHandler
+        self.redirectHandler = redirectHandler
         self.eventMonitor = eventMonitor
+        setupSessionManagerBlocks()
+    }
+
+    private func setupSessionManagerBlocks() {
+        if let handler = cachedResponseHandler {
+            sessionManager.setDataTaskWillCacheResponseBlock { _, task, response in
+                return handler.dataTask(task, willCacheResponse: response) ?? response
+            }
+        }
+        if let handler = redirectHandler {
+            sessionManager.setTaskWillPerformHTTPRedirectionBlock { _, task, response, request in
+                guard let httpResponse = response as? HTTPURLResponse else { return request }
+                return handler.task(task, willBeRedirectedTo: request, for: httpResponse)
+            }
+        }
     }
 
     // MARK: - 请求创建辅助
@@ -192,6 +222,99 @@ public class Session: @unchecked Sendable {
         return request
     }
 
+    /// 断点续传下载（P1-3）
+    @discardableResult
+    public func download(resumingWith resumeData: Data,
+                         interceptor: (any RequestIntercepting)? = nil,
+                         to destination: DownloadDestination? = nil) -> DownloadRequest {
+        let descriptor = RequestDescriptor(urlString: "", method: .GET, parameters: nil,
+                                           encoding: .auto, headers: nil)
+        descriptor.interceptor = interceptor
+        let context = RequestContext(descriptor: descriptor)
+        let request = DownloadRequest(context: context, session: self, destination: destination)
+
+        eventMonitor.send(.created(context))
+        trackRequest(request)
+        performResumedDownloadRequest(request, resumeData: resumeData)
+
+        return request
+    }
+
+    // MARK: - Upload Request
+
+    /// 上传 Data（P1-1）
+    @discardableResult
+    public func upload(_ data: Data,
+                       to urlString: String,
+                       method: HTTPMethod = .POST,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+        let context = makeContext(urlString: urlString, method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+        let request = UploadRequest(uploadable: .data(data), context: context, session: self)
+
+        eventMonitor.send(.created(context))
+        trackRequest(request)
+        performUploadRequest(request)
+
+        return request
+    }
+
+    /// 上传本地文件（P1-1）
+    @discardableResult
+    public func upload(fileAt fileURL: URL,
+                       to urlString: String,
+                       method: HTTPMethod = .POST,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+        let context = makeContext(urlString: urlString, method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+        let request = UploadRequest(uploadable: .file(fileURL), context: context, session: self)
+
+        eventMonitor.send(.created(context))
+        trackRequest(request)
+        performUploadRequest(request)
+
+        return request
+    }
+
+    /// 上传输入流（P1-1）
+    @discardableResult
+    public func upload(_ stream: InputStream,
+                       to urlString: String,
+                       method: HTTPMethod = .POST,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+        let context = makeContext(urlString: urlString, method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+        let request = UploadRequest(uploadable: .stream(stream), context: context, session: self)
+
+        eventMonitor.send(.created(context))
+        trackRequest(request)
+        performUploadRequest(request)
+
+        return request
+    }
+
+    /// Multipart Form Data 上传（P2-1 + P1-1）
+    @discardableResult
+    public func upload(multipartFormData formDataBuilder: @escaping (MultipartFormData) -> Void,
+                       to urlString: String,
+                       method: HTTPMethod = .POST,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+        let context = makeContext(urlString: urlString, method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+        let request = UploadRequest(uploadable: .multipartFormData(formDataBuilder),
+                                    context: context, session: self)
+
+        eventMonitor.send(.created(context))
+        trackRequest(request)
+        performUploadRequest(request)
+
+        return request
+    }
+
     // MARK: - 内部执行
 
     private func performDataRequest(_ request: DataRequest) {
@@ -209,7 +332,7 @@ public class Session: @unchecked Sendable {
                 parameters: descriptor.parameters as? [String: Any],
                 headers: headerDict,
                 uploadProgress: nil,
-                downloadProgress: nil,
+                downloadProgress: { request.downloadProgressHandler?($0) },
                 success: { [weak self] (task: URLSessionDataTask, responseObject: Any?) in
                     guard let self = self else { return }
                     context.response = task.response as? HTTPURLResponse
@@ -264,7 +387,7 @@ public class Session: @unchecked Sendable {
 
             let task = self.sessionManager.downloadTask(
                 with: urlRequest,
-                progress: nil,
+                progress: { request.downloadProgressHandler?($0) },
                 destination: { (targetPath: URL, response: URLResponse) -> URL in
                     if let dest = request.destination,
                        let httpResponse = response as? HTTPURLResponse {
@@ -299,11 +422,160 @@ public class Session: @unchecked Sendable {
         }
     }
 
+    // MARK: - 内部执行（上传）
+
+    private func buildURLRequest(from descriptor: RequestDescriptor) -> URLRequest? {
+        guard let url = URL(string: descriptor.urlString) else { return nil }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = descriptor.method.rawValue
+        if let headers = descriptor.headers {
+            for (name, value) in headers.dictionary {
+                urlRequest.setValue(value, forHTTPHeaderField: name)
+            }
+        }
+        return urlRequest
+    }
+
+    private func performUploadRequest(_ request: UploadRequest) {
+        let context = request.context
+        let descriptor = context.descriptor
+
+        rootQueue.async { [weak self] in
+            guard let self else { return }
+
+            let progressBlock = request.uploadProgressHandler
+
+            let completionHandler: (URLResponse, Any?, Error?) -> Void = { [weak self] response, responseObject, error in
+                guard let self else { return }
+                context.response = response as? HTTPURLResponse
+                if let data = responseObject as? Data {
+                    context.mutableData = NSMutableData(data: data)
+                }
+                context.error = error
+                context.state = .finished
+                self.eventMonitor.send(.finished(context))
+                self.finalizeRequest(identifier: context.identifier)
+            }
+
+            switch request.uploadable {
+            case .data(let data):
+                guard let urlRequest = self.buildURLRequest(from: descriptor) else {
+                    context.error = NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL)
+                    context.state = .finished
+                    self.eventMonitor.send(.finished(context))
+                    return
+                }
+                let task = self.sessionManager.uploadTask(with: urlRequest, from: data,
+                                                          progress: { progressBlock?($0) },
+                                                          completionHandler: completionHandler)
+                context.task = task
+                context.state = .resumed
+                task.resume()
+
+            case .file(let fileURL):
+                guard let urlRequest = self.buildURLRequest(from: descriptor) else {
+                    context.error = NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL)
+                    context.state = .finished
+                    self.eventMonitor.send(.finished(context))
+                    return
+                }
+                let task = self.sessionManager.uploadTask(with: urlRequest, fromFile: fileURL,
+                                                          progress: { progressBlock?($0) },
+                                                          completionHandler: completionHandler)
+                context.task = task
+                context.state = .resumed
+                task.resume()
+
+            case .stream:
+                guard let urlRequest = self.buildURLRequest(from: descriptor) else {
+                    context.error = NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL)
+                    context.state = .finished
+                    self.eventMonitor.send(.finished(context))
+                    return
+                }
+                let task = self.sessionManager.uploadTask(withStreamedRequest: urlRequest,
+                                                          progress: { progressBlock?($0) },
+                                                          completionHandler: completionHandler)
+                context.task = task
+                context.state = .resumed
+                task.resume()
+
+            case .multipartFormData(let formDataBuilder):
+                let headerDict = descriptor.headers?.dictionary ?? [:]
+                let task = self.sessionManager.post(
+                    descriptor.urlString,
+                    parameters: nil,
+                    headers: headerDict,
+                    constructingBodyWith: { objcFormData in
+                        let swiftFormData = MultipartFormData(underlying: objcFormData)
+                        formDataBuilder(swiftFormData)
+                    },
+                    progress: { progressBlock?($0) },
+                    success: { dataTask, responseObject in
+                        completionHandler(dataTask.response!, responseObject, nil)
+                    },
+                    failure: { dataTask, error in
+                        completionHandler(dataTask?.response ?? URLResponse(), nil, error)
+                    }
+                )
+                if let task {
+                    context.task = task
+                    context.state = .resumed
+                }
+            }
+
+            self.eventMonitor.send(.resumed(context))
+        }
+    }
+
+    // MARK: - 内部执行（断点续传）
+
+    private func performResumedDownloadRequest(_ request: DownloadRequest, resumeData: Data) {
+        let context = request.context
+
+        rootQueue.async { [weak self] in
+            guard let self else { return }
+
+            let task = self.sessionManager.downloadTask(
+                withResumeData: resumeData,
+                progress: nil,
+                destination: { (targetPath: URL, response: URLResponse) -> URL in
+                    if let dest = request.destination,
+                       let httpResponse = response as? HTTPURLResponse {
+                        let (url, options) = dest.handler(targetPath, httpResponse)
+                        if options.contains(.createIntermediateDirectories) {
+                            try? FileManager.default.createDirectory(
+                                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        }
+                        if options.contains(.removePreviousFile) {
+                            try? FileManager.default.removeItem(at: url)
+                        }
+                        return url
+                    }
+                    return targetPath
+                },
+                completionHandler: { [weak self] response, fileURL, error in
+                    guard let self else { return }
+                    context.response = response as? HTTPURLResponse
+                    context.fileURL = fileURL
+                    context.error = error
+                    context.state = .finished
+                    self.eventMonitor.send(.finished(context))
+                    self.finalizeRequest(identifier: context.identifier)
+                }
+            )
+
+            context.task = task
+            context.state = .resumed
+            task.resume()
+            self.eventMonitor.send(.resumed(context))
+        }
+    }
+
     // MARK: - 请求完成处理（Actor 桥接）
 
     /// 从 Actor 中取出 handler 并调用，同步移除活跃请求
     private func finalizeRequest(identifier: String) {
-        // 同步移除活跃请求引用
         requestLock.lock()
         activeRequests.removeValue(forKey: identifier)
         requestLock.unlock()

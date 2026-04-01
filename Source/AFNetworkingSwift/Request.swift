@@ -60,6 +60,9 @@ open class Request: @unchecked Sendable {
     /// 完成回调队列
     internal let completionQueue: DispatchQueue
 
+    /// 下载进度回调（由 `downloadProgress(queue:closure:)` 设置）
+    internal var downloadProgressHandler: (@Sendable (Progress) -> Void)?
+
     // MARK: - 初始化
 
     init(context: RequestContext, session: Session, completionQueue: DispatchQueue = .main) {
@@ -134,9 +137,43 @@ open class Request: @unchecked Sendable {
         return self
     }
 
+    // MARK: - 认证（P2-2）
+
+    /// 使用用户名和密码设置 Basic Auth（存入 URLCredentialStorage）
+    @discardableResult
+    public func authenticate(username: String,
+                             password: String,
+                             persistence: URLCredential.Persistence = .forSession) -> Self {
+        let credential = URLCredential(user: username, password: password, persistence: persistence)
+        return authenticate(with: credential)
+    }
+
+    /// 使用 URLCredential 设置认证信息（存入 URLCredentialStorage）
+    @discardableResult
+    public func authenticate(with credential: URLCredential) -> Self {
+        guard let url = URL(string: context.descriptor.urlString),
+              let host = url.host else { return self }
+        let port = url.port ?? (url.scheme == "https" ? 443 : 80)
+        let scheme = url.scheme ?? "https"
+        let protectionSpace = URLProtectionSpace(host: host, port: port, protocol: scheme,
+                                                 realm: nil,
+                                                 authenticationMethod: NSURLAuthenticationMethodHTTPBasic)
+        URLCredentialStorage.shared.set(credential, for: protectionSpace)
+        return self
+    }
+
     // MARK: - 调试
 
-    /// 生成 cURL 命令描述
+    /// 注册下载进度回调（P1-2）
+    @discardableResult
+    public func downloadProgress(queue: DispatchQueue = .main,
+                                 closure: @escaping @Sendable (Progress) -> Void) -> Self {
+        downloadProgressHandler = { progress in
+            queue.async { closure(progress) }
+        }
+        return self
+    }
+
     /// - Parameter handler: 接收 cURL 字符串的闭包
     @discardableResult
     public func cURLDescription(calling handler: @escaping @Sendable (String) -> Void) -> Self {

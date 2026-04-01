@@ -63,6 +63,92 @@ public final class SecurityPolicyEvaluator: ServerTrustEvaluating, @unchecked Se
     }
 }
 
+// MARK: - Concrete Evaluators
+
+/// 默认信任评估器：系统证书链验证，不允许无效证书（对齐 Alamofire `DefaultTrustEvaluator`）。
+public struct DefaultTrustEvaluator: ServerTrustEvaluating, Sendable {
+    public init() {}
+
+    public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
+        let policy = AFSecurityPolicy(pinningMode: .none)
+        policy.allowInvalidCertificates = false
+        policy.validatesDomainName = true
+        if !policy.evaluateServerTrust(serverTrust, forDomain: host) {
+            throw NSError(domain: ServerTrustManagerErrorDomain, code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Server trust evaluation failed for host: \(host)"])
+        }
+    }
+}
+
+/// 证书 Pinning 评估器（对齐 Alamofire `PinnedCertificatesTrustEvaluator`）。
+public struct PinnedCertificatesTrustEvaluator: ServerTrustEvaluating, @unchecked Sendable {
+    private let certificates: Set<Data>
+    private let validateCertificateChain: Bool
+
+    /// - Parameters:
+    ///   - certificates: DER 编码的证书数据集合。传 `nil` 时自动从 main bundle 加载。
+    ///   - validateCertificateChain: 是否验证完整证书链，默认 `true`。
+    public init(certificates: Set<Data>? = nil, validateCertificateChain: Bool = true) {
+        self.certificates = certificates ?? AFSecurityPolicy.certificates(in: .main)
+        self.validateCertificateChain = validateCertificateChain
+    }
+
+    public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
+        let policy = AFSecurityPolicy(pinningMode: .certificate)
+        policy.pinnedCertificates = certificates
+        policy.allowInvalidCertificates = !validateCertificateChain
+        policy.validatesDomainName = true
+        if !policy.evaluateServerTrust(serverTrust, forDomain: host) {
+            throw NSError(domain: ServerTrustManagerErrorDomain, code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Pinned certificate evaluation failed for host: \(host)"])
+        }
+    }
+}
+
+/// 公钥 Pinning 评估器（对齐 Alamofire `PublicKeysTrustEvaluator`）。
+public struct PublicKeysTrustEvaluator: ServerTrustEvaluating, @unchecked Sendable {
+    private let certificates: Set<Data>
+
+    public init(certificates: Set<Data>? = nil) {
+        self.certificates = certificates ?? AFSecurityPolicy.certificates(in: .main)
+    }
+
+    public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
+        let policy = AFSecurityPolicy(pinningMode: .publicKey)
+        policy.pinnedCertificates = certificates
+        policy.allowInvalidCertificates = false
+        policy.validatesDomainName = true
+        if !policy.evaluateServerTrust(serverTrust, forDomain: host) {
+            throw NSError(domain: ServerTrustManagerErrorDomain, code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Public key pinning evaluation failed for host: \(host)"])
+        }
+    }
+}
+
+/// 禁用信任评估器：允许所有证书，**仅用于调试**（对齐 Alamofire `DisabledTrustEvaluator`）。
+public struct DisabledTrustEvaluator: ServerTrustEvaluating, Sendable {
+    public init() {}
+
+    public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
+        // 不做任何验证 — 仅限调试环境使用
+    }
+}
+
+/// 组合评估器：依次运行多个评估器，全部通过才算成功（对齐 Alamofire `CompositeTrustEvaluator`）。
+public struct CompositeTrustEvaluator: ServerTrustEvaluating, @unchecked Sendable {
+    private let evaluators: [any ServerTrustEvaluating]
+
+    public init(evaluators: [any ServerTrustEvaluating]) {
+        self.evaluators = evaluators
+    }
+
+    public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
+        for evaluator in evaluators {
+            try evaluator.evaluate(serverTrust, forHost: host)
+        }
+    }
+}
+
 // MARK: - ServerTrustManager
 
 /// 管理多个 host 的服务器信任评估策略，对齐 Alamofire 的 `ServerTrustManager`。

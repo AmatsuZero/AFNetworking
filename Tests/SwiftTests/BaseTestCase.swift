@@ -1,7 +1,28 @@
-// BaseTestCase.swift
-// 测试基类，提供 Alamofire 测试所需的公共基础设施。
-// 对齐 Alamofire Tests 中的 BaseTestCase。
+//
+//  BaseTestCase.swift
+//
+//  Copyright (c) 2014-2018 Alamofire Software Foundation (http://alamofire.org/)
+//
+//  Permission is hereby granted, free of charge, to any person obtaining a copy
+//  of this software and associated documentation files (the "Software"), to deal
+//  in the Software without restriction, including without limitation the rights
+//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//  copies of the Software, and to permit persons to whom the Software is
+//  furnished to do so, subject to the following conditions:
+//
+//  The above copyright notice and this permission notice shall be included in
+//  all copies or substantial portions of the Software.
+//
+//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+//  THE SOFTWARE.
+//
 
+import Foundation
 import XCTest
 #if SWIFT_PACKAGE
 @testable import AFNetworkingSwift
@@ -10,38 +31,99 @@ import AFNetworking
 @testable import AFNetworking
 #endif
 
-/// 测试基类
-@MainActor
 class BaseTestCase: XCTestCase {
+    enum SkipVersion {
+        case twenty
+        case none
 
-    /// 默认超时时间
-    let timeout: TimeInterval = 30.0
+        var shouldSkip: Bool {
+            switch self {
+            case .twenty:
+                if #available(macOS 11, iOS 14, tvOS 14, watchOS 7, *) {
+                    false
+                } else {
+                    true
+                }
+            case .none:
+                false
+            }
+        }
 
-    /// 测试用 Session
+        var reason: String {
+            switch self {
+            case .twenty:
+                "Skipped due to being iOS 13 or below."
+            case .none:
+                "This should never skip."
+            }
+        }
+    }
+
+    let timeout: TimeInterval = 10
+
+    var skipVersion: SkipVersion { .none }
+
+    var testDirectoryURL: URL {
+        FileManager.temporaryDirectoryURL.appendingPathComponent("org.afnetworking.swift.tests")
+    }
+
+    var temporaryFileURL: URL {
+        testDirectoryURL.appendingPathComponent(UUID().uuidString)
+    }
+
+    /// Shared session for tests. Initialized in setUp; subclasses may override.
     var session: Session!
 
-    override func setUp() async throws {
-        try await super.setUp()
+    /// Base URL for httpbin.org integration tests.
+    let urlString = "https://httpbin.org"
+
+    override func setUp() {
+        super.setUp()
         session = Session()
+        FileManager.createDirectory(at: testDirectoryURL)
     }
 
-    override func tearDown() async throws {
+    override func setUpWithError() throws {
+        try XCTSkipIf(skipVersion.shouldSkip, skipVersion.reason)
+        try super.setUpWithError()
+    }
+
+    override func tearDown() {
         session = nil
-        try await super.tearDown()
+        FileManager.removeAllItemsInsideDirectory(at: testDirectoryURL)
+        clearCredentials()
+        clearCookies()
+        super.tearDown()
     }
 
-    // MARK: - 辅助方法
-
-    /// httpbin 基础 URL
-    var urlString: String {
-        "https://httpbin.org"
+    func clearCookies(for storage: HTTPCookieStorage = .shared) {
+        storage.cookies?.forEach { storage.deleteCookie($0) }
     }
 
-    /// 创建期望并等待
-    func expectation(description: String, execute: @escaping (@escaping () -> Void) -> Void) {
-        let exp = expectation(description: description)
-        execute {
-            exp.fulfill()
+    func clearCredentials(for storage: URLCredentialStorage = .shared) {
+        for (protectionSpace, credentials) in storage.allCredentials {
+            for (_, credential) in credentials {
+                storage.remove(credential, for: protectionSpace)
+            }
+        }
+    }
+
+    func url(forResource fileName: String, withExtension ext: String) -> URL {
+        Bundle.test.url(forResource: fileName, withExtension: ext)!
+    }
+
+    func stored(_ session: Session) -> Session {
+        self.session = session
+        return session
+    }
+
+    /// Runs assertions on a particular `DispatchQueue`.
+    @MainActor
+    func assert(on queue: DispatchQueue, assertions: @escaping @Sendable () -> Void) {
+        let expect = expectation(description: "all assertions are complete")
+        queue.async {
+            assertions()
+            expect.fulfill()
         }
         waitForExpectations(timeout: timeout)
     }

@@ -11,6 +11,8 @@ import AFNetworking
 
 final class SessionTests: BaseTestCase {
 
+    // NOTE: This file is a legacy placeholder and will be replaced with Alamofire's SessionTests in Phase 3.
+
     // MARK: - 基本请求
 
     func testGETRequest() {
