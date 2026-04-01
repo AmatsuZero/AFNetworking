@@ -78,11 +78,11 @@ public final class DownloadRequest: Request, @unchecked Sendable {
     ///   - queue: 回调队列
     ///   - completionHandler: 完成回调
     @discardableResult
-    public func response(queue: DispatchQueue = .main,
+    public func response(queue: DispatchQueue? = nil,
                          completionHandler: @escaping @Sendable (DownloadResponse<URL?>) -> Void) -> Self {
         session?.registerDownloadCompletion(for: self) { [weak self] in
             guard let self = self else { return }
-            let validationError = self.performValidation()
+            let validationError = self.performValidation(data: nil)
             let finalError = validationError ?? self.context.error
 
             let response = DownloadResponse<URL?>(
@@ -94,27 +94,8 @@ public final class DownloadRequest: Request, @unchecked Sendable {
                 serializationDuration: 0,
                 result: finalError == nil ? .success(self.context.fileURL) : .failure(finalError!)
             )
-            queue.async { completionHandler(response) }
+            self.dispatchCallback(on: queue) { completionHandler(response) }
         }
         return self
-    }
-
-    // MARK: - 内部
-
-    internal func performValidation() -> Error? {
-        guard let httpResponse = context.response else { return nil }
-        for validator in validators {
-            if let error = validator.validate(context.currentRequest, response: httpResponse, data: nil) {
-                return error
-            }
-        }
-        return nil
-    }
-
-    private var metricsIfAvailable: URLSessionTaskMetrics? {
-        if #available(iOS 10.0, macOS 10.12, tvOS 10.0, watchOS 3.0, *) {
-            return context.metrics
-        }
-        return nil
     }
 }

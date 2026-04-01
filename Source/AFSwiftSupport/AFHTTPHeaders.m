@@ -159,58 +159,63 @@
 }
 
 + (instancetype)defaultHeaders {
-    AFHTTPHeaders *headers = [[self alloc] init];
+    static AFHTTPHeaders *cachedHeaders;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        AFHTTPHeaders *headers = [[AFHTTPHeaders alloc] init];
 
-    // Accept-Encoding
-    NSArray<NSString *> *encodings = @[@"br", @"gzip", @"deflate"];
-    NSMutableArray<NSString *> *qualifiedEncodings = [NSMutableArray array];
-    for (NSUInteger i = 0; i < encodings.count; i++) {
-        double quality = 1.0 - (i * 0.1);
-        [qualifiedEncodings addObject:[NSString stringWithFormat:@"%@;q=%.1f", encodings[i], quality]];
-    }
-    [headers addHeader:[AFHTTPHeader headerWithName:@"Accept-Encoding"
-                                              value:[qualifiedEncodings componentsJoinedByString:@", "]]];
+        // Accept-Encoding
+        NSArray<NSString *> *encodings = @[@"br", @"gzip", @"deflate"];
+        NSMutableArray<NSString *> *qualifiedEncodings = [NSMutableArray array];
+        for (NSUInteger i = 0; i < encodings.count; i++) {
+            double quality = 1.0 - (i * 0.1);
+            [qualifiedEncodings addObject:[NSString stringWithFormat:@"%@;q=%.1f", encodings[i], quality]];
+        }
+        [headers addHeader:[AFHTTPHeader headerWithName:@"Accept-Encoding"
+                                                  value:[qualifiedEncodings componentsJoinedByString:@", "]]];
 
-    // Accept-Language
-    NSMutableArray<NSString *> *languages = [NSMutableArray array];
-    NSArray<NSString *> *preferredLanguages = [NSLocale preferredLanguages];
-    NSUInteger languageCount = MIN(preferredLanguages.count, (NSUInteger)6);
-    for (NSUInteger i = 0; i < languageCount; i++) {
-        double quality = 1.0 - (i * 0.1);
-        [languages addObject:[NSString stringWithFormat:@"%@;q=%.1f", preferredLanguages[i], quality]];
-    }
-    [headers addHeader:[AFHTTPHeader headerWithName:@"Accept-Language"
-                                              value:[languages componentsJoinedByString:@", "]]];
+        // Accept-Language
+        NSMutableArray<NSString *> *languages = [NSMutableArray array];
+        NSArray<NSString *> *preferredLanguages = [NSLocale preferredLanguages];
+        NSUInteger languageCount = MIN(preferredLanguages.count, (NSUInteger)6);
+        for (NSUInteger i = 0; i < languageCount; i++) {
+            double quality = 1.0 - (i * 0.1);
+            [languages addObject:[NSString stringWithFormat:@"%@;q=%.1f", preferredLanguages[i], quality]];
+        }
+        [headers addHeader:[AFHTTPHeader headerWithName:@"Accept-Language"
+                                                  value:[languages componentsJoinedByString:@", "]]];
 
-    // User-Agent
-    NSBundle *bundle = [NSBundle mainBundle];
-    NSString *appName = [bundle objectForInfoDictionaryKey:(__bridge NSString *)kCFBundleExecutableKey] ?: @"Unknown";
-    NSString *appVersion = [bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"Unknown";
-    NSString *bundleID = [bundle bundleIdentifier] ?: @"Unknown";
+        // User-Agent
+        NSBundle *bundle = [NSBundle mainBundle];
+        NSString *appName = [bundle objectForInfoDictionaryKey:(__bridge NSString *)kCFBundleExecutableKey] ?: @"Unknown";
+        NSString *appVersion = [bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"Unknown";
+        NSString *bundleID = [bundle bundleIdentifier] ?: @"Unknown";
 
 #if TARGET_OS_IOS
-    NSString *osName = @"iOS";
+        NSString *osName = @"iOS";
 #elif TARGET_OS_WATCH
-    NSString *osName = @"watchOS";
+        NSString *osName = @"watchOS";
 #elif TARGET_OS_TV
-    NSString *osName = @"tvOS";
+        NSString *osName = @"tvOS";
 #elif TARGET_OS_MAC
-    NSString *osName = @"macOS";
+        NSString *osName = @"macOS";
 #else
-    NSString *osName = @"Unknown";
+        NSString *osName = @"Unknown";
 #endif
 
-    NSOperatingSystemVersion osVersion = [[NSProcessInfo processInfo] operatingSystemVersion];
-    NSString *osVersionString = [NSString stringWithFormat:@"%ld.%ld.%ld",
-                                 (long)osVersion.majorVersion,
-                                 (long)osVersion.minorVersion,
-                                 (long)osVersion.patchVersion];
+        NSOperatingSystemVersion osVersion = [[NSProcessInfo processInfo] operatingSystemVersion];
+        NSString *osVersionString = [NSString stringWithFormat:@"%ld.%ld.%ld",
+                                     (long)osVersion.majorVersion,
+                                     (long)osVersion.minorVersion,
+                                     (long)osVersion.patchVersion];
 
-    NSString *userAgent = [NSString stringWithFormat:@"%@/%@ (%@; %@ %@) AFNetworking",
-                           appName, appVersion, bundleID, osName, osVersionString];
-    [headers addHeader:[AFHTTPHeader userAgentWithValue:userAgent]];
+        NSString *userAgent = [NSString stringWithFormat:@"%@/%@ (%@; %@ %@) AFNetworking",
+                               appName, appVersion, bundleID, osName, osVersionString];
+        [headers addHeader:[AFHTTPHeader userAgentWithValue:userAgent]];
 
-    return headers;
+        cachedHeaders = headers;
+    });
+    return [cachedHeaders copy];
 }
 
 #pragma mark - 增删改查

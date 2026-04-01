@@ -56,9 +56,8 @@ public class Session: @unchecked Sendable {
     /// 内部调度队列
     private let rootQueue: DispatchQueue
 
-    /// 请求完成回调映射
+    /// 请求完成回调映射（统一 data/download）
     private var completionHandlers: [String: () -> Void] = [:]
-    private var downloadCompletionHandlers: [String: () -> Void] = [:]
     private let lock = NSLock()
 
     /// 活跃请求集合
@@ -67,20 +66,13 @@ public class Session: @unchecked Sendable {
     // MARK: - 初始化
 
     /// 创建 Session
-    /// - Parameters:
-    ///   - configuration: URL 会话配置，默认 .default
-    ///   - interceptor: Session 级别拦截器
-    ///   - serverTrustManager: 服务器信任管理器
-    ///   - eventMonitors: 事件监控器数组
     public init(configuration: URLSessionConfiguration = .default,
                 interceptor: (any RequestIntercepting)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
                 eventMonitors: [any EventMonitoring] = []) {
         self.rootQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.\(UUID().uuidString)")
         self.sessionManager = AFHTTPSessionManager(sessionConfiguration: configuration)
-        // 使用 AFHTTPResponseSerializer 返回原始 Data，由 Swift 层自行序列化
         self.sessionManager.responseSerializer = AFHTTPResponseSerializer()
-        // 设置 completionQueue 避免回调到 main queue 导致死锁
         self.sessionManager.completionQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.completion.\(UUID().uuidString)")
         self.interceptor = interceptor
         self.serverTrustManager = serverTrustManager
@@ -88,11 +80,6 @@ public class Session: @unchecked Sendable {
     }
 
     /// 使用现有 AFHTTPSessionManager 创建 Session
-    /// - Parameters:
-    ///   - sessionManager: 现有的 AFHTTPSessionManager
-    ///   - interceptor: Session 级别拦截器
-    ///   - serverTrustManager: 服务器信任管理器
-    ///   - eventMonitors: 事件监控器数组
     public init(sessionManager: AFHTTPSessionManager,
                 interceptor: (any RequestIntercepting)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
@@ -104,17 +91,28 @@ public class Session: @unchecked Sendable {
         self.eventMonitors = eventMonitors
     }
 
+    // MARK: - 请求创建辅助
+
+    /// 创建并配置 RequestDescriptor + RequestContext
+    private func makeContext(urlString: String,
+                             method: HTTPMethod,
+                             parameters: [String: Any]?,
+                             encoding: ParameterEncoding,
+                             headers: HTTPHeaders?,
+                             interceptor: (any RequestIntercepting)?) -> RequestContext {
+        let descriptor = RequestDescriptor(
+            urlString: urlString,
+            method: method,
+            parameters: parameters,
+            encoding: encoding,
+            headers: headers
+        )
+        descriptor.interceptor = interceptor
+        return RequestContext(descriptor: descriptor)
+    }
+
     // MARK: - Data Request
 
-    /// 创建 Data 请求，对齐 Alamofire 的 `Session.request(...)`
-    /// - Parameters:
-    ///   - convertible: URL 字符串
-    ///   - method: HTTP 方法，默认 .GET
-    ///   - parameters: 请求参数
-    ///   - encoding: 参数编码方式
-    ///   - headers: 请求头
-    ///   - interceptor: 单请求拦截器
-    /// - Returns: DataRequest 实例
     @discardableResult
     public func request(_ convertible: String,
                         method: HTTPMethod = .GET,
@@ -122,25 +120,12 @@ public class Session: @unchecked Sendable {
                         encoding: ParameterEncoding = .auto,
                         headers: HTTPHeaders? = nil,
                         interceptor: (any RequestIntercepting)? = nil) -> DataRequest {
-        let descriptor = RequestDescriptor(
-            urlString: convertible,
-            method: method,
-            parameters: parameters,
-            encoding: encoding,
-            headers: headers
-        )
-        descriptor.interceptor = interceptor
-
-        let context = RequestContext(descriptor: descriptor)
+        let context = makeContext(urlString: convertible, method: method, parameters: parameters,
+                                 encoding: encoding, headers: headers, interceptor: interceptor)
         let request = DataRequest(context: context, session: self)
 
-        // 通知事件监控器
         notifyMonitors { $0.requestDidCreate?(context) }
-
-        // 注册活跃请求
         trackRequest(request)
-
-        // 执行请求
         performDataRequest(request)
 
         return request
@@ -148,16 +133,6 @@ public class Session: @unchecked Sendable {
 
     // MARK: - Download Request
 
-    /// 创建下载请求，对齐 Alamofire 的 `Session.download(...)`
-    /// - Parameters:
-    ///   - convertible: URL 字符串
-    ///   - method: HTTP 方法，默认 .GET
-    ///   - parameters: 请求参数
-    ///   - encoding: 参数编码方式
-    ///   - headers: 请求头
-    ///   - interceptor: 单请求拦截器
-    ///   - destination: 下载目标
-    /// - Returns: DownloadRequest 实例
     @discardableResult
     public func download(_ convertible: String,
                          method: HTTPMethod = .GET,
@@ -166,16 +141,8 @@ public class Session: @unchecked Sendable {
                          headers: HTTPHeaders? = nil,
                          interceptor: (any RequestIntercepting)? = nil,
                          to destination: DownloadDestination? = nil) -> DownloadRequest {
-        let descriptor = RequestDescriptor(
-            urlString: convertible,
-            method: method,
-            parameters: parameters,
-            encoding: encoding,
-            headers: headers
-        )
-        descriptor.interceptor = interceptor
-
-        let context = RequestContext(descriptor: descriptor)
+        let context = makeContext(urlString: convertible, method: method, parameters: parameters,
+                                 encoding: encoding, headers: headers, interceptor: interceptor)
         let request = DownloadRequest(context: context, session: self, destination: destination)
 
         notifyMonitors { $0.requestDidCreate?(context) }
@@ -194,7 +161,6 @@ public class Session: @unchecked Sendable {
         rootQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // 构建 URLRequest
             let headerDict = descriptor.headers?.dictionary ?? [:]
 
             let task = self.sessionManager.dataTask(
@@ -212,33 +178,16 @@ public class Session: @unchecked Sendable {
                         context.mutableData = NSMutableData(data: data)
                     }
                     context.state = .finished
-
                     self.notifyMonitors { $0.requestDidFinish?(context) }
-
-                    // 先调用回调，再从活跃请求中移除，避免 DataRequest 被提前释放
-                    self.lock.lock()
-                    let handler = self.completionHandlers.removeValue(forKey: context.identifier)
-                    self.lock.unlock()
-                    handler?()
-                    self.lock.lock()
-                    self.activeRequests.removeValue(forKey: context.identifier)
-                    self.lock.unlock()
+                    self.finalizeRequest(identifier: context.identifier)
                 },
                 failure: { [weak self] (task: URLSessionDataTask?, error: Error) in
                     guard let self = self else { return }
                     context.response = task?.response as? HTTPURLResponse
                     context.error = error
                     context.state = .finished
-
                     self.notifyMonitors { $0.requestDidFinish?(context) }
-
-                    self.lock.lock()
-                    let handler = self.completionHandlers.removeValue(forKey: context.identifier)
-                    self.lock.unlock()
-                    handler?()
-                    self.lock.lock()
-                    self.activeRequests.removeValue(forKey: context.identifier)
-                    self.lock.unlock()
+                    self.finalizeRequest(identifier: context.identifier)
                 }
             )
 
@@ -257,7 +206,6 @@ public class Session: @unchecked Sendable {
         rootQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // 构建 URLRequest
             guard let url = URL(string: descriptor.urlString) else {
                 context.error = NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: nil)
                 context.state = .finished
@@ -268,7 +216,6 @@ public class Session: @unchecked Sendable {
             var urlRequest = URLRequest(url: url)
             urlRequest.httpMethod = descriptor.method.rawValue
 
-            // 设置请求头
             if let headers = descriptor.headers {
                 for (name, value) in headers.dictionary {
                     urlRequest.setValue(value, forHTTPHeaderField: name)
@@ -299,16 +246,8 @@ public class Session: @unchecked Sendable {
                     context.fileURL = fileURL
                     context.error = error
                     context.state = .finished
-
                     self.notifyMonitors { $0.requestDidFinish?(context) }
-
-                    self.lock.lock()
-                    let handler = self.downloadCompletionHandlers.removeValue(forKey: context.identifier)
-                    self.lock.unlock()
-                    handler?()
-                    self.lock.lock()
-                    self.activeRequests.removeValue(forKey: context.identifier)
-                    self.lock.unlock()
+                    self.finalizeRequest(identifier: context.identifier)
                 }
             )
 
@@ -320,9 +259,20 @@ public class Session: @unchecked Sendable {
         }
     }
 
+    // MARK: - 请求完成处理
+
+    /// 从回调映射中取出 handler 并调用，然后移除活跃请求
+    private func finalizeRequest(identifier: String) {
+        lock.lock()
+        let handler = completionHandlers.removeValue(forKey: identifier)
+        self.activeRequests.removeValue(forKey: identifier)
+        lock.unlock()
+        handler?()
+    }
+
     // MARK: - 回调注册
 
-    internal func registerCompletion(for request: DataRequest, handler: @escaping () -> Void) {
+    internal func registerCompletion(for request: Request, handler: @escaping () -> Void) {
         lock.lock()
         if request.context.state == .finished {
             lock.unlock()
@@ -333,15 +283,9 @@ public class Session: @unchecked Sendable {
         }
     }
 
+    // 保留向后兼容
     internal func registerDownloadCompletion(for request: DownloadRequest, handler: @escaping () -> Void) {
-        lock.lock()
-        if request.context.state == .finished {
-            lock.unlock()
-            handler()
-        } else {
-            downloadCompletionHandlers[request.id] = handler
-            lock.unlock()
-        }
+        registerCompletion(for: request, handler: handler)
     }
 
     // MARK: - 请求跟踪
@@ -355,6 +299,7 @@ public class Session: @unchecked Sendable {
     // MARK: - 事件分发
 
     private func notifyMonitors(_ closure: (any EventMonitoring) -> Void) {
+        guard !eventMonitors.isEmpty else { return }
         for monitor in eventMonitors {
             closure(monitor)
         }

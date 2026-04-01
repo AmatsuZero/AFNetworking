@@ -32,7 +32,7 @@ open class Request: @unchecked Sendable {
     // MARK: - 属性
 
     /// 底层请求上下文
-    public let context: RequestContext
+    internal let context: RequestContext
 
     /// 关联的 Session
     public weak var session: Session?
@@ -165,6 +165,34 @@ open class Request: @unchecked Sendable {
             handler(components.joined(separator: " \\\n\t"))
         }
         return self
+    }
+
+    // MARK: - 共享内部方法
+
+    /// 执行响应验证
+    internal func performValidation(data: Data? = nil) -> Error? {
+        guard let httpResponse = context.response else { return nil }
+        let validationData = data ?? context.data
+        for validator in validators {
+            if let error = validator.validate(context.currentRequest, response: httpResponse, data: validationData) {
+                return error
+            }
+        }
+        return nil
+    }
+
+    /// 获取请求指标（如可用）
+    internal var metricsIfAvailable: URLSessionTaskMetrics? {
+        context.metrics
+    }
+
+    /// 将回调分发到指定队列
+    internal func dispatchCallback(on queue: DispatchQueue?, execute work: @escaping @Sendable () -> Void) {
+        if let queue = queue {
+            queue.async { work() }
+        } else {
+            work()
+        }
     }
 }
 

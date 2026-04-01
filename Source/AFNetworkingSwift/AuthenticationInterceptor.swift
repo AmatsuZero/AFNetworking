@@ -58,6 +58,9 @@ public protocol Authenticator {
 /// 自动注入凭据、检测 401 并刷新 token 后重试。
 public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: NSObject, RequestIntercepting {
 
+    /// 关联的 Session（用于 credential 刷新）
+    public weak var session: Session?
+
     /// 认证器
     public let authenticator: AuthenticatorType
 
@@ -120,7 +123,7 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
     public func shouldRetry(_ request: URLRequest, withError error: any Error, retryCount: UInt, completion: @escaping @Sendable (RetryResult, (any Error)?) -> Void) {
         // 此处简化：如果不是 HTTP 响应错误，不重试
         let nsError = error as NSError
-        guard nsError.domain == NSURLErrorDomain || nsError.domain == "com.alamofire.afnetworking.validation" else {
+        guard nsError.domain == NSURLErrorDomain || nsError.domain == ResponseValidationErrorDomain else {
             completion(.doNotRetry, nil)
             return
         }
@@ -159,7 +162,7 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
         refreshCount += 1
         lock.unlock()
 
-        authenticator.refresh(credential, for: Session.default) { [weak self] result in
+        authenticator.refresh(credential, for: session ?? Session.default) { [weak self] result in
             guard let self = self else { return }
             self.lock.lock()
             self.isRefreshing = false
