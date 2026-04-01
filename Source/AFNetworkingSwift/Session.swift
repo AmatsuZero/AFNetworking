@@ -27,8 +27,8 @@ import AFSwiftSupport
 
 // MARK: - Sendable conformance for ObjC types used across concurrency boundaries
 
-extension RequestContext: @unchecked Sendable {}
-extension RequestDescriptor: @unchecked Sendable {}
+extension RequestContext: @retroactive @unchecked Sendable {}
+extension RequestDescriptor: @retroactive @unchecked Sendable {}
 
 /// Session 是 Swift 包装层的核心入口，对齐 Alamofire 的 `Session`。
 /// 底层复用 `AFHTTPSessionManager` 的执行能力。
