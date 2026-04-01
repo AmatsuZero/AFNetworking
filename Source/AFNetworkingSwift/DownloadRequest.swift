@@ -22,7 +22,6 @@
 import Foundation
 #if SWIFT_PACKAGE
 import AFNetworking
-import AFSwiftSupport
 #endif
 
 /// 下载文件目标配置
@@ -80,13 +79,12 @@ public final class DownloadRequest: Request, @unchecked Sendable {
     @discardableResult
     public func response(queue: DispatchQueue? = nil,
                          completionHandler: @escaping @Sendable (DownloadResponse<URL?>) -> Void) -> Self {
-        session?.registerDownloadCompletion(for: self) { [weak self] in
-            guard let self = self else { return }
+        session?.registerDownloadCompletion(for: self) { [self] in
             let validationError = self.performValidation(data: nil)
             let finalError = validationError ?? self.context.error
 
             let response = DownloadResponse<URL?>(
-                request: self.context.currentRequest as URLRequest?,
+                request: self.context.currentRequest,
                 response: self.context.response,
                 fileURL: self.context.fileURL,
                 resumeData: nil,

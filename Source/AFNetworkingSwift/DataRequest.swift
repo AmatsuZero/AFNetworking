@@ -22,7 +22,6 @@
 import Foundation
 #if SWIFT_PACKAGE
 import AFNetworking
-import AFSwiftSupport
 #endif
 
 /// Data 请求类型，对齐 Alamofire 的 `DataRequest`。
@@ -43,15 +42,14 @@ public final class DataRequest: Request, @unchecked Sendable {
         serialize: @escaping @Sendable (_ data: Data?, _ error: Error?) -> Result<T, Error>,
         completionHandler: @escaping @Sendable (DataResponse<T>) -> Void
     ) {
-        session?.registerCompletion(for: self) { [weak self] in
-            guard let self = self else { return }
+        session?.registerCompletion(for: self) { [self] in
             let data = self.context.data                       // read once
             let validationError = self.performValidation()
             let finalError = validationError ?? self.context.error
             let result = serialize(data, finalError)
 
             let response = DataResponse<T>(
-                request: self.context.currentRequest as URLRequest?,
+                request: self.context.currentRequest,
                 response: self.context.response,
                 data: data,
                 metrics: self.metricsIfAvailable,

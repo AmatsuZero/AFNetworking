@@ -33,3 +33,5 @@ fastlane/README.md
 
 # Codebuddy
 .codebuddy/plan
+.omc
+.claude

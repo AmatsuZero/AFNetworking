@@ -5,7 +5,6 @@ import XCTest
 #if SWIFT_PACKAGE
 @testable import AFNetworkingSwift
 import AFNetworking
-import AFSwiftSupport
 #else
 @testable import AFNetworking
 #endif
@@ -19,7 +18,7 @@ final class ValidationTests: BaseTestCase {
         let url = URL(string: "https://httpbin.org/get")!
         let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
 
-        let error = validator.validate(nil as URLRequest?, response: response, data: nil as Data?)
+        let error = validator.validate(nil, response: response, data: nil)
         XCTAssertNil(error)
     }
 
@@ -28,7 +27,7 @@ final class ValidationTests: BaseTestCase {
         let url = URL(string: "https://httpbin.org/get")!
         let response = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!
 
-        let error = validator.validate(nil as URLRequest?, response: response, data: nil as Data?)
+        let error = validator.validate(nil, response: response, data: nil)
         XCTAssertNotNil(error)
     }
 
@@ -37,7 +36,7 @@ final class ValidationTests: BaseTestCase {
         let url = URL(string: "https://httpbin.org/get")!
         let response = HTTPURLResponse(url: url, statusCode: 301, httpVersion: nil, headerFields: nil)!
 
-        let error = validator.validate(nil as URLRequest?, response: response, data: nil as Data?)
+        let error = validator.validate(nil, response: response, data: nil)
         XCTAssertNil(error)
     }
 
@@ -49,7 +48,7 @@ final class ValidationTests: BaseTestCase {
         let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
                                        headerFields: ["Content-Type": "application/json"])!
 
-        let error = validator.validate(nil as URLRequest?, response: response, data: Data("{}".utf8))
+        let error = validator.validate(nil, response: response, data: Data("{}".utf8))
         XCTAssertNil(error)
     }
 
@@ -59,7 +58,7 @@ final class ValidationTests: BaseTestCase {
         let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
                                        headerFields: ["Content-Type": "text/html"])!
 
-        let error = validator.validate(nil as URLRequest?, response: response, data: Data("<html></html>".utf8))
+        let error = validator.validate(nil, response: response, data: Data("<html></html>".utf8))
         XCTAssertNotNil(error)
     }
 
@@ -77,8 +76,8 @@ final class ValidationTests: BaseTestCase {
         let response418 = HTTPURLResponse(url: url, statusCode: 418, httpVersion: nil, headerFields: nil)!
         let response200 = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
 
-        XCTAssertNotNil(validator.validate(nil as URLRequest?, response: response418, data: nil as Data?))
-        XCTAssertNil(validator.validate(nil as URLRequest?, response: response200, data: nil as Data?))
+        XCTAssertNotNil(validator.validate(nil, response: response418, data: nil))
+        XCTAssertNil(validator.validate(nil, response: response200, data: nil))
     }
 
     // MARK: - 链式验证

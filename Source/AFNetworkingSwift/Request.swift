@@ -22,11 +22,10 @@
 import Foundation
 #if SWIFT_PACKAGE
 import AFNetworking
-import AFSwiftSupport
 #endif
 
 /// 请求基类，对齐 Alamofire 的 `Request`。
-/// 持有 OC 层的 `AFRequestContext`，提供链式配置和生命周期控制。
+/// 持有 `RequestContext`，提供链式配置和生命周期控制。
 open class Request: @unchecked Sendable {
 
     // MARK: - 属性
@@ -47,7 +46,7 @@ open class Request: @unchecked Sendable {
     public var task: URLSessionTask? { context.task }
 
     /// 原始请求
-    public var request: URLRequest? { context.currentRequest as URLRequest? }
+    public var request: URLRequest? { context.currentRequest }
 
     /// 服务器响应
     public var response: HTTPURLResponse? { context.response }
@@ -56,7 +55,7 @@ open class Request: @unchecked Sendable {
     public var retryCount: UInt { context.retryCount }
 
     /// 验证器列表
-    internal var validators: [ResponseValidating] = []
+    internal var validators: [any ResponseValidating] = []
 
     /// 完成回调队列
     internal let completionQueue: DispatchQueue
@@ -127,9 +126,9 @@ open class Request: @unchecked Sendable {
     /// 自定义验证
     /// - Parameter validation: 验证闭包
     @discardableResult
-    public func validate(_ validation: @escaping (URLRequest?, HTTPURLResponse, Data?) -> Error?) -> Self {
+    public func validate(_ validation: @escaping @Sendable (URLRequest?, HTTPURLResponse, Data?) -> Error?) -> Self {
         let block = BlockResponseValidator { request, response, data in
-            return validation(request as URLRequest?, response, data)
+            return validation(request, response, data) as NSError?
         }
         validators.append(block)
         return self
@@ -142,7 +141,7 @@ open class Request: @unchecked Sendable {
     @discardableResult
     public func cURLDescription(calling handler: @escaping @Sendable (String) -> Void) -> Self {
         completionQueue.async { [weak self] in
-            guard let request = self?.context.currentRequest as URLRequest? else {
+            guard let request = self?.context.currentRequest else {
                 handler("$ curl command could not be created")
                 return
             }

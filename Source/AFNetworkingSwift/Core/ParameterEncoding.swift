@@ -1,4 +1,4 @@
-// AFHTTPMethod.h
+// ParameterEncoding.swift
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,30 +19,18 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#import <Foundation/Foundation.h>
+import Foundation
 
-NS_ASSUME_NONNULL_BEGIN
-
-/// HTTP 请求方法的类型安全封装，对齐 Alamofire 的 HTTPMethod 设计。
-typedef NSString *AFHTTPMethod NS_TYPED_EXTENSIBLE_ENUM NS_SWIFT_NAME(HTTPMethod);
-
-/// HTTP GET 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodGET;
-/// HTTP HEAD 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodHEAD;
-/// HTTP POST 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodPOST;
-/// HTTP PUT 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodPUT;
-/// HTTP PATCH 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodPATCH;
-/// HTTP DELETE 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodDELETE;
-/// HTTP CONNECT 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodCONNECT;
-/// HTTP OPTIONS 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodOPTIONS;
-/// HTTP TRACE 方法
-FOUNDATION_EXPORT AFHTTPMethod const AFHTTPMethodTRACE;
-
-NS_ASSUME_NONNULL_END
+/// 参数编码位置
+public enum ParameterEncoding: Int, Sendable {
+    /// 自动：GET/HEAD/DELETE 放 URL，其他放 Body
+    case auto = 0
+    /// 强制 URL 查询参数编码
+    case urlQuery
+    /// 强制 HTTP Body 编码
+    case httpBody
+    /// JSON Body 编码
+    case json
+    /// Property List Body 编码
+    case propertyList
+}

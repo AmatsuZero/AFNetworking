@@ -1,4 +1,4 @@
-// AFHTTPMethod.m
+// RequestState.swift
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,14 +19,18 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#import "AFHTTPMethod.h"
+import Foundation
 
-AFHTTPMethod const AFHTTPMethodGET     = @"GET";
-AFHTTPMethod const AFHTTPMethodHEAD    = @"HEAD";
-AFHTTPMethod const AFHTTPMethodPOST    = @"POST";
-AFHTTPMethod const AFHTTPMethodPUT     = @"PUT";
-AFHTTPMethod const AFHTTPMethodPATCH   = @"PATCH";
-AFHTTPMethod const AFHTTPMethodDELETE  = @"DELETE";
-AFHTTPMethod const AFHTTPMethodCONNECT = @"CONNECT";
-AFHTTPMethod const AFHTTPMethodOPTIONS = @"OPTIONS";
-AFHTTPMethod const AFHTTPMethodTRACE   = @"TRACE";
+/// 请求上下文的状态
+public enum RequestState: Int, Sendable {
+    /// 已初始化，尚未发起
+    case initialized = 0
+    /// 已恢复（正在执行）
+    case resumed
+    /// 已暂停
+    case suspended
+    /// 已取消
+    case cancelled
+    /// 已完成
+    case finished
+}

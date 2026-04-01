@@ -30,10 +30,6 @@ Pod::Spec.new do |s|
 
   s.swift_versions = ['5.5', '5.6', '5.7', '5.8', '5.9', '5.10', '6.0']
 
-  # Note: AFNetworking/AFNetworking.h is not listed here because CocoaPods generates
-  # its own umbrella header (AFNetworking-umbrella.h). A compatibility header named
-  # AFNetworking.h is provided via the SwiftSupport subspec to satisfy the Swift
-  # compiler's generated -Swift.h bridging header import.
 
   s.subspec 'Serialization' do |ss|
     ss.source_files = 'AFNetworking/AFURL{Request,Response}Serialization.{h,m}'
@@ -65,15 +61,8 @@ Pod::Spec.new do |s|
     ss.source_files = 'UIKit+AFNetworking'
   end
 
-  s.subspec 'SwiftSupport' do |ss|
-    ss.dependency 'AFNetworking/NSURLSession'
-
-    ss.source_files = 'Source/AFSwiftSupport/**/*.{h,m}'
-    ss.public_header_files = 'Source/AFSwiftSupport/**/*.h'
-  end
-
   s.subspec 'Swift' do |ss|
-    ss.dependency 'AFNetworking/SwiftSupport'
+    ss.dependency 'AFNetworking/NSURLSession'
 
     ss.source_files = 'Source/AFNetworkingSwift/**/*.swift'
 

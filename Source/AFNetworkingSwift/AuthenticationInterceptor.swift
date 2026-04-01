@@ -22,28 +22,27 @@
 import Foundation
 #if SWIFT_PACKAGE
 import AFNetworking
-import AFSwiftSupport
 #endif
 
 // MARK: - 认证凭据协议
 
-/// 认证凭据协议，对齐 Alamofire 的 `AuthenticationCredential`。
-public protocol AuthenticationCredential {
+/// 认证凭据协议
+public protocol AuthenticationCredential: Sendable {
     /// 凭据是否需要刷新
     var requiresRefresh: Bool { get }
 }
 
 // MARK: - 认证器协议
 
-/// 认证器协议，对齐 Alamofire 的 `Authenticator`。
-public protocol Authenticator {
+/// 认证器协议
+public protocol Authenticator: Sendable {
     associatedtype Credential: AuthenticationCredential
 
     /// 将凭据应用到请求
     func apply(_ credential: Credential, to urlRequest: inout URLRequest)
 
     /// 刷新凭据
-    func refresh(_ credential: Credential, for session: Session, completion: @escaping (Result<Credential, Error>) -> Void)
+    func refresh(_ credential: Credential, for session: Session, completion: @escaping @Sendable (Result<Credential, Error>) -> Void)
 
     /// 判断请求是否因认证失败
     func didRequest(_ urlRequest: URLRequest, with response: HTTPURLResponse, failDueToAuthenticationError error: Error) -> Bool
@@ -52,11 +51,67 @@ public protocol Authenticator {
     func isRequest(_ urlRequest: URLRequest, authenticatedWith credential: Credential) -> Bool
 }
 
+// MARK: - AuthState Actor
+
+/// 内部 Actor 封装认证拦截器的可变状态，替代 NSLock。
+actor AuthState<A: Authenticator> {
+    var credential: A.Credential?
+    var isRefreshing = false
+    var refreshCount = 0
+    var pendingAdaptations: [(URLRequest, @Sendable (URLRequest?, (any Error)?) -> Void)] = []
+    var pendingRetries: [(URLRequest, any Error, UInt, @Sendable (RetryResult, (any Error)?) -> Void)] = []
+
+    init(credential: A.Credential?) {
+        self.credential = credential
+    }
+
+    func getCredential() -> A.Credential? { credential }
+
+    func setCredential(_ newCredential: A.Credential) {
+        credential = newCredential
+    }
+
+    func beginRefresh() -> Bool {
+        guard !isRefreshing else { return false }
+        isRefreshing = true
+        refreshCount += 1
+        return true
+    }
+
+    func endRefresh() {
+        isRefreshing = false
+    }
+
+    func canRetry(maxRefreshCount: Int) -> Bool {
+        refreshCount < maxRefreshCount
+    }
+
+    func enqueuePendingAdaptation(_ item: (URLRequest, @Sendable (URLRequest?, (any Error)?) -> Void)) {
+        pendingAdaptations.append(item)
+    }
+
+    func enqueuePendingRetry(_ item: (URLRequest, any Error, UInt, @Sendable (RetryResult, (any Error)?) -> Void)) {
+        pendingRetries.append(item)
+    }
+
+    func drainPendingAdaptations() -> [(URLRequest, @Sendable (URLRequest?, (any Error)?) -> Void)] {
+        let result = pendingAdaptations
+        pendingAdaptations = []
+        return result
+    }
+
+    func drainPendingRetries() -> [(URLRequest, any Error, UInt, @Sendable (RetryResult, (any Error)?) -> Void)] {
+        let result = pendingRetries
+        pendingRetries = []
+        return result
+    }
+}
+
 // MARK: - 认证拦截器
 
 /// 认证拦截器，对齐 Alamofire 的 `AuthenticationInterceptor`。
 /// 自动注入凭据、检测 401 并刷新 token 后重试。
-public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: NSObject, RequestIntercepting {
+public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: RequestIntercepting, @unchecked Sendable {
 
     /// 关联的 Session（用于 credential 刷新）
     public weak var session: Session?
@@ -64,23 +119,18 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
     /// 认证器
     public let authenticator: AuthenticatorType
 
-    /// 当前凭据
-    public private(set) var credential: AuthenticatorType.Credential?
+    /// 当前凭据（同步访问，内部由 actor 保护）
+    public var credential: AuthenticatorType.Credential? {
+        // 提供同步只读访问（best-effort snapshot）
+        _credentialSnapshot
+    }
+    private var _credentialSnapshot: AuthenticatorType.Credential?
 
     /// 最大刷新次数
     public let maxRefreshCount: Int
 
-    /// 当前刷新次数
-    private var refreshCount = 0
-
-    /// 是否正在刷新
-    private var isRefreshing = false
-
-    /// 等待刷新完成的请求队列
-    private var pendingAdaptations: [(URLRequest, (URLRequest?, Error?) -> Void)] = []
-    private var pendingRetries: [(URLRequest, any Error, UInt, @Sendable (RetryResult, (any Error)?) -> Void)] = []
-
-    private let lock = NSLock()
+    /// 内部 Actor 封装可变状态
+    private let state: AuthState<AuthenticatorType>
 
     /// 创建认证拦截器
     /// - Parameters:
@@ -91,31 +141,30 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
                 credential: AuthenticatorType.Credential? = nil,
                 maxRefreshCount: Int = 2) {
         self.authenticator = authenticator
-        self.credential = credential
+        self._credentialSnapshot = credential
         self.maxRefreshCount = maxRefreshCount
+        self.state = AuthState<AuthenticatorType>(credential: credential)
     }
 
     // MARK: - RequestAdapting
 
-    public func adaptRequest(_ request: URLRequest, completion: @escaping (URLRequest?, (any Error)?) -> Void) {
-        lock.lock()
-        guard let credential = credential else {
-            lock.unlock()
-            completion(request, nil)
-            return
-        }
+    public func adaptRequest(_ request: URLRequest, completion: @escaping @Sendable (URLRequest?, (any Error)?) -> Void) {
+        Task {
+            guard let credential = await state.getCredential() else {
+                completion(request, nil)
+                return
+            }
 
-        if credential.requiresRefresh {
-            pendingAdaptations.append((request, completion))
-            lock.unlock()
-            refreshCredentialIfNeeded()
-            return
-        }
+            if credential.requiresRefresh {
+                await state.enqueuePendingAdaptation((request, completion))
+                await refreshCredentialIfNeeded()
+                return
+            }
 
-        lock.unlock()
-        var mutableRequest = request
-        authenticator.apply(credential, to: &mutableRequest)
-        completion(mutableRequest, nil)
+            var mutableRequest = request
+            authenticator.apply(credential, to: &mutableRequest)
+            completion(mutableRequest, nil)
+        }
     }
 
     // MARK: - RequestRetrying
@@ -128,81 +177,66 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
             return
         }
 
-        lock.lock()
-        guard credential != nil else {
-            lock.unlock()
-            completion(.doNotRetry, nil)
-            return
-        }
+        Task {
+            guard await state.getCredential() != nil else {
+                completion(.doNotRetry, nil)
+                return
+            }
 
-        if refreshCount >= maxRefreshCount {
-            lock.unlock()
-            completion(.doNotRetry, nil)
-            return
-        }
+            guard await state.canRetry(maxRefreshCount: maxRefreshCount) else {
+                completion(.doNotRetry, nil)
+                return
+            }
 
-        pendingRetries.append((request, error, retryCount, completion))
-        lock.unlock()
-        refreshCredentialIfNeeded()
+            await state.enqueuePendingRetry((request, error, retryCount, completion))
+            await refreshCredentialIfNeeded()
+        }
     }
 
     // MARK: - 刷新
 
-    private func refreshCredentialIfNeeded() {
-        lock.lock()
-        guard !isRefreshing else {
-            lock.unlock()
+    private func refreshCredentialIfNeeded() async {
+        guard await state.beginRefresh() else { return }
+
+        guard let credential = await state.getCredential() else {
+            await state.endRefresh()
             return
         }
-        guard let credential = credential else {
-            lock.unlock()
-            return
-        }
-        isRefreshing = true
-        refreshCount += 1
-        lock.unlock()
 
         authenticator.refresh(credential, for: session ?? Session.default) { [weak self] result in
             guard let self = self else { return }
-            self.lock.lock()
-            self.isRefreshing = false
+            let result = result // rebind for Sendable capture
+            Task { @Sendable in
+                await self.state.endRefresh()
 
-            switch result {
-            case .success(let newCredential):
-                self.credential = newCredential
+                switch result {
+                case .success(let newCredential):
+                    await self.state.setCredential(newCredential)
+                    self._credentialSnapshot = newCredential
 
-                // 处理等待中的适配请求
-                let adaptations = self.pendingAdaptations
-                self.pendingAdaptations = []
+                    let adaptations = await self.state.drainPendingAdaptations()
+                    let retries = await self.state.drainPendingRetries()
 
-                // 处理等待中的重试请求
-                let retries = self.pendingRetries
-                self.pendingRetries = []
+                    for (request, completion) in adaptations {
+                        var mutableRequest = request
+                        self.authenticator.apply(newCredential, to: &mutableRequest)
+                        completion(mutableRequest, nil)
+                    }
 
-                self.lock.unlock()
+                    for (_, _, _, completion) in retries {
+                        completion(.retry, nil)
+                    }
 
-                for (request, completion) in adaptations {
-                    var mutableRequest = request
-                    self.authenticator.apply(newCredential, to: &mutableRequest)
-                    completion(mutableRequest, nil)
-                }
+                case .failure(let error):
+                    let adaptations = await self.state.drainPendingAdaptations()
+                    let retries = await self.state.drainPendingRetries()
 
-                for (_, _, _, completion) in retries {
-                    completion(.retry, nil)
-                }
-
-            case .failure(let error):
-                let adaptations = self.pendingAdaptations
-                self.pendingAdaptations = []
-                let retries = self.pendingRetries
-                self.pendingRetries = []
-                self.lock.unlock()
-
-                for (_, completion) in adaptations {
-                    completion(nil, error)
-                }
-                for (_, _, _, completion) in retries {
-                    completion(.doNotRetryWithError, error as NSError)
+                    for (_, completion) in adaptations {
+                        completion(nil, error)
+                    }
+                    for (_, _, _, completion) in retries {
+                        completion(.doNotRetryWithError, error as NSError)
+                    }
                 }
             }
         }
@@ -212,7 +246,7 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
 // MARK: - 重试策略
 
 /// 退避重试策略，对齐 Alamofire 的 `RetryPolicy`。
-public final class RetryPolicy: NSObject, RequestRetrying {
+public final class RetryPolicy: RequestRetrying, @unchecked Sendable {
 
     /// 最大重试次数
     public let retryLimit: UInt
@@ -230,12 +264,6 @@ public final class RetryPolicy: NSObject, RequestRetrying {
     public let retryableURLErrorCodes: Set<Int>
 
     /// 创建重试策略
-    /// - Parameters:
-    ///   - retryLimit: 最大重试次数，默认 2
-    ///   - exponentialBackoffBase: 退避基数，默认 2
-    ///   - exponentialBackoffScale: 退避倍数，默认 0.5
-    ///   - retryableHTTPMethods: 可重试的 HTTP 方法
-    ///   - retryableURLErrorCodes: 可重试的 URL 错误码
     public init(retryLimit: UInt = 2,
                 exponentialBackoffBase: Double = 2,
                 exponentialBackoffScale: Double = 0.5,

@@ -5,7 +5,6 @@ import XCTest
 #if SWIFT_PACKAGE
 @testable import AFNetworkingSwift
 import AFNetworking
-import AFSwiftSupport
 #else
 @testable import AFNetworking
 #endif
@@ -167,9 +166,9 @@ final class SessionTests: BaseTestCase {
     func testCustomHeaders() {
         let exp = expectation(description: "Custom headers should be sent")
 
-        let headers = HTTPHeaders(headers: [
+        let headers: HTTPHeaders = [
             HTTPHeader(name: "X-Custom-Header", value: "test-value")
-        ])
+        ]
 
         session.request("\(urlString)/headers", headers: headers)
             .validate()

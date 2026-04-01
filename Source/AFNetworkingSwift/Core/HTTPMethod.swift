@@ -1,4 +1,4 @@
-// AFSwiftSupport.h
+// HTTPMethod.swift
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,31 +19,36 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#import <Foundation/Foundation.h>
+import Foundation
 
-#ifndef _AFSWIFTSUPPORT_
-#define _AFSWIFTSUPPORT_
+/// HTTP 请求方法的类型安全封装，对齐 Alamofire 的 `HTTPMethod`。
+public struct HTTPMethod: RawRepresentable, Hashable, Sendable {
+    public let rawValue: String
 
-// 请求描述与配置
-#import "AFHTTPMethod.h"
-#import "AFHTTPHeaders.h"
-#import "AFRequestDescriptor.h"
-#import "AFRequestContext.h"
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
 
-// 拦截器与重试
-#import "AFRequestInterceptor.h"
+    /// HTTP GET
+    public static let GET = HTTPMethod(rawValue: "GET")
+    /// HTTP HEAD
+    public static let HEAD = HTTPMethod(rawValue: "HEAD")
+    /// HTTP POST
+    public static let POST = HTTPMethod(rawValue: "POST")
+    /// HTTP PUT
+    public static let PUT = HTTPMethod(rawValue: "PUT")
+    /// HTTP PATCH
+    public static let PATCH = HTTPMethod(rawValue: "PATCH")
+    /// HTTP DELETE
+    public static let DELETE = HTTPMethod(rawValue: "DELETE")
+    /// HTTP CONNECT
+    public static let CONNECT = HTTPMethod(rawValue: "CONNECT")
+    /// HTTP OPTIONS
+    public static let OPTIONS = HTTPMethod(rawValue: "OPTIONS")
+    /// HTTP TRACE
+    public static let TRACE = HTTPMethod(rawValue: "TRACE")
+}
 
-// 响应结果
-#import "AFDataResponse.h"
-#import "AFDownloadResponse.h"
-
-// 验证器
-#import "AFResponseValidator.h"
-
-// 事件监控
-#import "AFEventMonitor.h"
-
-// 多 Host 信任管理
-#import "AFServerTrustManager.h"
-
-#endif /* _AFSWIFTSUPPORT_ */
+extension HTTPMethod: CustomStringConvertible {
+    public var description: String { rawValue }
+}

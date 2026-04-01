@@ -1,6 +1,5 @@
-// AFNetworking.h
-//
-// Copyright (c) 2013 AFNetworking (http://afnetworking.com/)
+// RetryResult.swift
+// Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,9 +19,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-// This header exists to satisfy the Swift compiler's generated -Swift.h bridging
-// header, which always imports <ModuleName/ModuleName.h>. CocoaPods replaces the
-// original umbrella header with its own AFNetworking-umbrella.h, so this file
-// ensures the import resolves correctly by re-exporting the umbrella header.
+import Foundation
 
-#import "AFNetworking-umbrella.h"
+/// 重试决策结果
+public enum RetryResult: Int, Sendable {
+    /// 执行重试
+    case retry = 0
+    /// 不重试，使用原始错误
+    case doNotRetry
+    /// 不重试，使用指定错误
+    case doNotRetryWithError
+}

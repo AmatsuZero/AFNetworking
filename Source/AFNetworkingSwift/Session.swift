@@ -22,13 +22,53 @@
 import Foundation
 #if SWIFT_PACKAGE
 import AFNetworking
-import AFSwiftSupport
 #endif
 
-// MARK: - Sendable conformance for ObjC types used across concurrency boundaries
+// MARK: - SessionStorage Actor
 
-extension RequestContext: @retroactive @unchecked Sendable {}
-extension RequestDescriptor: @retroactive @unchecked Sendable {}
+/// 内部 Actor 封装 Session 的回调状态，替代 NSLock 保护 completionHandlers。
+/// 使用 tombstone 模式解决 register/finalize 的 Task 执行顺序不确定性：
+/// - 正常路径：register 先到 → 存入 handler → finalize 取出并执行
+/// - 快速网络：finalize 先到 → 存入 tombstone → register 发现 tombstone 后直接执行 handler
+actor SessionStorage {
+    /// 请求完成回调映射
+    private var completionHandlers: [String: @Sendable () -> Void] = [:]
+    /// Tombstone 集合：finalize 先于 register 到达时留下标记
+    private var earlyFinalized: Set<String> = []
+
+    /// 注册完成回调。返回 `false` 表示 handler 应由调用者直接执行（已 finalize 或已 finished）。
+    func registerIfNotFinished(request: Request, handler: @escaping @Sendable () -> Void) -> Bool {
+        let id = request.id
+
+        // Case 1: finalize 已先到 — 消费 tombstone，调用者直接执行 handler
+        if earlyFinalized.remove(id) != nil {
+            return false
+        }
+        // Case 2: 请求已完成
+        if request.context.state == .finished {
+            return false
+        }
+        // 正常路径：存储 handler 等待 finalize 取出
+        completionHandlers[id] = handler
+        return true
+    }
+
+    /// 取出并执行完成回调。若 register 尚未到达，留下 tombstone。
+    func finalize(identifier: String) -> (@Sendable () -> Void)? {
+        if let handler = completionHandlers.removeValue(forKey: identifier) {
+            return handler // 正常路径：register 先到
+        }
+        // register 尚未到达 — 留下 tombstone
+        earlyFinalized.insert(identifier)
+        return nil
+    }
+
+    /// 取消请求时清理状态
+    func cancel(identifier: String) {
+        completionHandlers.removeValue(forKey: identifier)
+        earlyFinalized.remove(identifier)
+    }
+}
 
 /// Session 是 Swift 包装层的核心入口，对齐 Alamofire 的 `Session`。
 /// 底层复用 `AFHTTPSessionManager` 的执行能力。
@@ -47,21 +87,21 @@ public class Session: @unchecked Sendable {
     /// Session 级别的拦截器
     public let interceptor: (any RequestIntercepting)?
 
-    /// Session 级别的事件监控器
-    public let eventMonitors: [any EventMonitoring]
+    /// Combine-based 事件监控器
+    public let eventMonitor: EventMonitor
 
     /// Session 级别的服务器信任管理器
     public let serverTrustManager: ServerTrustManager?
 
-    /// 内部调度队列
+    /// 内部调度队列 — 协调 ObjC `AFHTTPSessionManager` API 调用，与 Actor 状态保护正交
     private let rootQueue: DispatchQueue
 
-    /// 请求完成回调映射（统一 data/download）
-    private var completionHandlers: [String: () -> Void] = [:]
-    private let lock = NSLock()
+    /// 内部 Actor 封装回调状态
+    private let storage = SessionStorage()
 
-    /// 活跃请求集合
+    /// 活跃请求集合 — 同步访问保证请求不会被提前释放
     private var activeRequests: [String: Request] = [:]
+    private let requestLock = NSLock()
 
     // MARK: - 初始化
 
@@ -69,26 +109,26 @@ public class Session: @unchecked Sendable {
     public init(configuration: URLSessionConfiguration = .default,
                 interceptor: (any RequestIntercepting)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
-                eventMonitors: [any EventMonitoring] = []) {
+                eventMonitor: EventMonitor = EventMonitor()) {
         self.rootQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.\(UUID().uuidString)")
         self.sessionManager = AFHTTPSessionManager(sessionConfiguration: configuration)
         self.sessionManager.responseSerializer = AFHTTPResponseSerializer()
         self.sessionManager.completionQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.completion.\(UUID().uuidString)")
         self.interceptor = interceptor
         self.serverTrustManager = serverTrustManager
-        self.eventMonitors = eventMonitors
+        self.eventMonitor = eventMonitor
     }
 
     /// 使用现有 AFHTTPSessionManager 创建 Session
     public init(sessionManager: AFHTTPSessionManager,
                 interceptor: (any RequestIntercepting)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
-                eventMonitors: [any EventMonitoring] = []) {
+                eventMonitor: EventMonitor = EventMonitor()) {
         self.rootQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.\(UUID().uuidString)")
         self.sessionManager = sessionManager
         self.interceptor = interceptor
         self.serverTrustManager = serverTrustManager
-        self.eventMonitors = eventMonitors
+        self.eventMonitor = eventMonitor
     }
 
     // MARK: - 请求创建辅助
@@ -124,8 +164,8 @@ public class Session: @unchecked Sendable {
                                  encoding: encoding, headers: headers, interceptor: interceptor)
         let request = DataRequest(context: context, session: self)
 
-        notifyMonitors { $0.requestDidCreate?(context) }
-        trackRequest(request)
+        eventMonitor.send(.created(context))
+        trackRequest(request) // 同步跟踪，保证请求不会被提前释放
         performDataRequest(request)
 
         return request
@@ -145,8 +185,8 @@ public class Session: @unchecked Sendable {
                                  encoding: encoding, headers: headers, interceptor: interceptor)
         let request = DownloadRequest(context: context, session: self, destination: destination)
 
-        notifyMonitors { $0.requestDidCreate?(context) }
-        trackRequest(request)
+        eventMonitor.send(.created(context))
+        trackRequest(request) // 同步跟踪，保证请求不会被提前释放
         performDownloadRequest(request)
 
         return request
@@ -178,7 +218,7 @@ public class Session: @unchecked Sendable {
                         context.mutableData = NSMutableData(data: data)
                     }
                     context.state = .finished
-                    self.notifyMonitors { $0.requestDidFinish?(context) }
+                    self.eventMonitor.send(.finished(context))
                     self.finalizeRequest(identifier: context.identifier)
                 },
                 failure: { [weak self] (task: URLSessionDataTask?, error: Error) in
@@ -186,7 +226,7 @@ public class Session: @unchecked Sendable {
                     context.response = task?.response as? HTTPURLResponse
                     context.error = error
                     context.state = .finished
-                    self.notifyMonitors { $0.requestDidFinish?(context) }
+                    self.eventMonitor.send(.finished(context))
                     self.finalizeRequest(identifier: context.identifier)
                 }
             )
@@ -195,7 +235,7 @@ public class Session: @unchecked Sendable {
             context.state = .resumed
             task?.resume()
 
-            self.notifyMonitors { $0.requestDidResume?(context) }
+            self.eventMonitor.send(.resumed(context))
         }
     }
 
@@ -209,7 +249,7 @@ public class Session: @unchecked Sendable {
             guard let url = URL(string: descriptor.urlString) else {
                 context.error = NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: nil)
                 context.state = .finished
-                self.notifyMonitors { $0.requestDidFinish?(context) }
+                self.eventMonitor.send(.finished(context))
                 return
             }
 
@@ -246,7 +286,7 @@ public class Session: @unchecked Sendable {
                     context.fileURL = fileURL
                     context.error = error
                     context.state = .finished
-                    self.notifyMonitors { $0.requestDidFinish?(context) }
+                    self.eventMonitor.send(.finished(context))
                     self.finalizeRequest(identifier: context.identifier)
                 }
             )
@@ -255,53 +295,48 @@ public class Session: @unchecked Sendable {
             context.state = .resumed
             task.resume()
 
-            self.notifyMonitors { $0.requestDidResume?(context) }
+            self.eventMonitor.send(.resumed(context))
         }
     }
 
-    // MARK: - 请求完成处理
+    // MARK: - 请求完成处理（Actor 桥接）
 
-    /// 从回调映射中取出 handler 并调用，然后移除活跃请求
+    /// 从 Actor 中取出 handler 并调用，同步移除活跃请求
     private func finalizeRequest(identifier: String) {
-        lock.lock()
-        let handler = completionHandlers.removeValue(forKey: identifier)
-        self.activeRequests.removeValue(forKey: identifier)
-        lock.unlock()
-        handler?()
+        // 同步移除活跃请求引用
+        requestLock.lock()
+        activeRequests.removeValue(forKey: identifier)
+        requestLock.unlock()
+
+        // Actor 中取出并执行回调
+        Task.detached {
+            let handler = await self.storage.finalize(identifier: identifier)
+            handler?()
+        }
     }
 
-    // MARK: - 回调注册
+    // MARK: - 回调注册（Actor 桥接）
 
-    internal func registerCompletion(for request: Request, handler: @escaping () -> Void) {
-        lock.lock()
-        if request.context.state == .finished {
-            lock.unlock()
-            handler()
-        } else {
-            completionHandlers[request.id] = handler
-            lock.unlock()
+    internal func registerCompletion(for request: Request, handler: @escaping @Sendable () -> Void) {
+        Task.detached {
+            let registered = await self.storage.registerIfNotFinished(request: request, handler: handler)
+            if !registered {
+                handler()
+            }
         }
     }
 
     // 保留向后兼容
-    internal func registerDownloadCompletion(for request: DownloadRequest, handler: @escaping () -> Void) {
+    internal func registerDownloadCompletion(for request: DownloadRequest, handler: @escaping @Sendable () -> Void) {
         registerCompletion(for: request, handler: handler)
     }
 
-    // MARK: - 请求跟踪
+    // MARK: - 请求跟踪（同步，保证请求生命周期）
 
     private func trackRequest(_ request: Request) {
-        lock.lock()
+        requestLock.lock()
         activeRequests[request.id] = request
-        lock.unlock()
+        requestLock.unlock()
     }
 
-    // MARK: - 事件分发
-
-    private func notifyMonitors(_ closure: (any EventMonitoring) -> Void) {
-        guard !eventMonitors.isEmpty else { return }
-        for monitor in eventMonitors {
-            closure(monitor)
-        }
-    }
 }

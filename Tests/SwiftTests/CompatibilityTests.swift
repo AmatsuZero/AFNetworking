@@ -4,7 +4,7 @@
 import XCTest
 #if SWIFT_PACKAGE
 import AFNetworking
-import AFSwiftSupport
+@testable import AFNetworkingSwift
 #else
 import AFNetworking
 #endif
@@ -103,26 +103,26 @@ final class CompatibilityTests: XCTestCase {
         NotificationCenter.default.removeObserver(observer)
     }
 
-    // MARK: - SwiftSupport 类型不影响旧 API
+    // MARK: - Swift 类型验证
 
-    func testSwiftSupportTypesExist() {
-        // 验证新增类型可以正常创建，不影响旧模块
+    func testSwiftTypesExist() {
+        // 验证新增 Swift 类型可以正常创建
         let method: HTTPMethod = .GET
         XCTAssertEqual(method.rawValue, "GET")
 
         let header = HTTPHeader(name: "Accept", value: "application/json")
         XCTAssertEqual(header.name, "Accept")
 
-        let headers = HTTPHeaders()
-        headers.addHeader(header)
+        var headers = HTTPHeaders()
+        headers.add(header)
         XCTAssertEqual(headers.count, 1)
 
         let descriptor = RequestDescriptor(
             urlString: "https://httpbin.org/get",
             method: .GET,
-            parameters: nil as [String: Any]?,
+            parameters: nil,
             encoding: .auto,
-            headers: nil as HTTPHeaders?
+            headers: nil
         )
         XCTAssertEqual(descriptor.urlString, "https://httpbin.org/get")
 
