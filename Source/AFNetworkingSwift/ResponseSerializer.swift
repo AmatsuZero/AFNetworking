@@ -70,13 +70,11 @@ public struct Empty: Codable, EmptyResponse {
 // MARK: - DataDecoder
 
 /// 数据解码器协议，对齐 Alamofire 的 `DataDecoder`。
-public protocol DataDecoder: Sendable {
+public protocol DataDecoder {
     func decode<D: Decodable>(_ type: D.Type, from data: Data) throws -> D
 }
 
 extension JSONDecoder: DataDecoder {}
-
-@available(macOS 13.0, iOS 16.0, tvOS 16.0, watchOS 9.0, *)
 extension PropertyListDecoder: DataDecoder {}
 
 // MARK: - DataResponseSerializerProtocol
@@ -229,7 +227,7 @@ public struct StringResponseSerializer: ResponseSerializer {
 // MARK: - DecodableResponseSerializer
 
 /// Decodable 模型序列化器，对齐 Alamofire 的 `DecodableResponseSerializer`。
-public struct DecodableResponseSerializer<T: Decodable & Sendable>: ResponseSerializer {
+public struct DecodableResponseSerializer<T: Decodable & Sendable>: ResponseSerializer, @unchecked Sendable {
     public let dataPreprocessor: any DataPreprocessor
     public let decoder: any DataDecoder
     public let emptyResponseCodes: Set<Int>
