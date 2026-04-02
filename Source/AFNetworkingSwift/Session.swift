@@ -743,4 +743,115 @@ public class Session: @unchecked Sendable {
         requestLock.unlock()
     }
 
+    // MARK: - ParameterEncoder Data Request
+
+    /// 使用 `Encodable` 参数和 `ParameterEncoder` 发起请求。
+    /// 对齐 Alamofire 的 `Session.request(_:method:parameters:encoder:headers:interceptor:)`.
+    @discardableResult
+    public func request<Parameters: Encodable>(
+        _ convertible: any URLConvertible,
+        method: HTTPMethod = .get,
+        parameters: Parameters?,
+        encoder: any ParameterEncoder = URLEncodedFormParameterEncoder.default,
+        headers: HTTPHeaders? = nil,
+        interceptor: (any RequestInterceptor)? = nil
+    ) -> DataRequest {
+        // 解析 URL
+        let url: URL
+        do {
+            url = try convertible.asURL()
+        } catch {
+            let ctx = makeContext(urlString: "", method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+            ctx.error = error
+            ctx.state = .finished
+            let req = DataRequest(context: ctx, session: self)
+            eventMonitor.send(.created(ctx))
+            eventMonitor.send(.finished(ctx))
+            trackRequest(req)
+            return req
+        }
+
+        // 构建基础 URLRequest 并用 encoder 编码参数
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = method.rawValue
+        if let headers {
+            for (name, value) in headers.dictionary {
+                urlRequest.setValue(value, forHTTPHeaderField: name)
+            }
+        }
+
+        do {
+            urlRequest = try encoder.encode(parameters, into: urlRequest)
+        } catch {
+            let ctx = makeContext(urlString: url.absoluteString, method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+            ctx.error = error
+            ctx.state = .finished
+            let req = DataRequest(context: ctx, session: self)
+            eventMonitor.send(.created(ctx))
+            eventMonitor.send(.finished(ctx))
+            trackRequest(req)
+            return req
+        }
+
+        // 使用编码后的 URL（可能包含 query string）发起请求
+        let finalURLString = urlRequest.url?.absoluteString ?? url.absoluteString
+        let context = makeContext(urlString: finalURLString, method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+        let req = DataRequest(context: context, session: self)
+
+        eventMonitor.send(.created(context))
+        trackRequest(req)
+
+        // 使用 rootQueue 直接发送带编码 body 的请求
+        rootQueue.async { [weak self] in
+            guard let self else { return }
+
+            let headerDict = urlRequest.allHTTPHeaderFields ?? [:]
+            let task = self.sessionManager.dataTask(
+                withHTTPMethod: method.rawValue,
+                urlString: finalURLString,
+                parameters: nil,
+                headers: headerDict,
+                uploadProgress: nil,
+                downloadProgress: { req.downloadProgressHandler?($0) },
+                success: { [weak self] (task: URLSessionDataTask, responseObject: Any?) in
+                    guard let self else { return }
+                    context.response = task.response as? HTTPURLResponse
+                    context.serializedObject = responseObject
+                    if let data = responseObject as? Data {
+                        context.mutableData = NSMutableData(data: data)
+                    }
+                    context.state = .finished
+                    self.eventMonitor.send(.finished(context))
+                    self.finalizeRequest(identifier: context.identifier)
+                },
+                failure: { [weak self] (task: URLSessionDataTask?, error: Error) in
+                    guard let self else { return }
+                    context.response = task?.response as? HTTPURLResponse
+                    context.error = error
+                    context.state = .finished
+                    self.eventMonitor.send(.finished(context))
+                    self.finalizeRequest(identifier: context.identifier)
+                }
+            )
+
+            // 对于 JSON body 请求，将编码后的 body 设置到 task 的 request 上
+            if let body = urlRequest.httpBody, let mutableRequest = task?.currentRequest as? NSMutableURLRequest {
+                mutableRequest.httpBody = body
+                if let ct = urlRequest.value(forHTTPHeaderField: "Content-Type") {
+                    mutableRequest.setValue(ct, forHTTPHeaderField: "Content-Type")
+                }
+            }
+
+            context.task = task
+            context.state = .resumed
+            task?.resume()
+            self.eventMonitor.send(.resumed(context))
+        }
+
+        return req
+    }
+
 }
