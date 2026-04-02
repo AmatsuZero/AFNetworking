@@ -47,10 +47,11 @@ final class URLConvertibleTests: XCTestCase {
     }
 
     func testURLComponentsAsURLInvalid() {
+        // URLComponents with a nil url (path-only, no scheme/host)
         var components = URLComponents()
-        components.scheme = "💥"  // Invalid scheme
-        // URLComponents may still produce a URL depending on platform,
-        // but if it doesn't, we expect AFError.invalidURL
+        components.host = ""
+        components.path = "not a valid path with spaces"
+        // If URLComponents produces nil url, we expect an error
         if components.url == nil {
             XCTAssertThrowsError(try components.asURL())
         }

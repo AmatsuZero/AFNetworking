@@ -44,7 +44,6 @@ extension URL {
 // MARK: - Endpoint
 
 /// 测试用端点，封装 URL 构建逻辑。
-/// 注意：AFNetworkingSwift 使用大写 HTTPMethod（.GET/.POST 等）。
 struct Endpoint {
     enum Scheme: String {
         case http, https
@@ -139,8 +138,8 @@ struct Endpoint {
         case brotli, gzip, deflate
     }
 
-    // NOTE: AFNetworkingSwift uses uppercase enum: .GET, .POST, etc.
-    static var get: Endpoint { method(.GET) }
+    // NOTE: HTTPMethod uses lowercase: .get, .post, etc.
+    static var get: Endpoint { method(.get) }
     static var `default`: Endpoint { .get }
 
     static func basicAuth(forUser user: String = "user", password: String = "password") -> Endpoint {
@@ -210,8 +209,8 @@ struct Endpoint {
     var scheme = Scheme.http
     var port: Int { host.port(for: scheme) }
     var host = Host.localhost
-    var path = Path.method(.GET)
-    var method: HTTPMethod = .GET
+    var path = Path.method(.get)
+    var method: HTTPMethod = .get
     var headers: HTTPHeaders = .init()
     var timeout: TimeInterval = 60
     var queryItems: [URLQueryItem] = []
@@ -275,7 +274,7 @@ struct Endpoint {
 extension Session {
     func request(_ endpoint: Endpoint,
                  parameters: [String: Any]? = nil,
-                 interceptor: (any RequestIntercepting)? = nil) -> DataRequest {
+                 interceptor: (any RequestInterceptor)? = nil) -> DataRequest {
         request(endpoint.urlString,
                 method: endpoint.method,
                 parameters: parameters,
@@ -283,7 +282,7 @@ extension Session {
     }
 
     func download(_ endpoint: Endpoint,
-                  interceptor: (any RequestIntercepting)? = nil,
+                  interceptor: (any RequestInterceptor)? = nil,
                   to destination: DownloadDestination? = nil) -> DownloadRequest {
         download(endpoint.urlString,
                  method: endpoint.method,
@@ -293,7 +292,7 @@ extension Session {
 
     func download(_ endpoint: Endpoint,
                   headers: HTTPHeaders,
-                  interceptor: (any RequestIntercepting)? = nil,
+                  interceptor: (any RequestInterceptor)? = nil,
                   to destination: DownloadDestination? = nil) -> DownloadRequest {
         download(endpoint.urlString,
                  method: endpoint.method,

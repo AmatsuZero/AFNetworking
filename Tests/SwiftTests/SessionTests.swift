@@ -33,7 +33,7 @@ final class SessionTests: BaseTestCase {
     func testPOSTRequest() {
         let exp = expectation(description: "POST request should succeed")
 
-        session.request("\(urlString)/post", method: .POST, parameters: ["key": "value"])
+        session.request("\(urlString)/post", method: .post, parameters: ["key": "value"])
             .validate()
             .responseJSON { response in
                 XCTAssertNotNil(response.value)
@@ -47,7 +47,7 @@ final class SessionTests: BaseTestCase {
     func testPUTRequest() {
         let exp = expectation(description: "PUT request should succeed")
 
-        session.request("\(urlString)/put", method: .PUT)
+        session.request("\(urlString)/put", method: .put)
             .validate()
             .responseData { response in
                 XCTAssertNil(response.error)
@@ -60,7 +60,7 @@ final class SessionTests: BaseTestCase {
     func testDELETERequest() {
         let exp = expectation(description: "DELETE request should succeed")
 
-        session.request("\(urlString)/delete", method: .DELETE)
+        session.request("\(urlString)/delete", method: .delete)
             .validate()
             .responseData { response in
                 XCTAssertNil(response.error)
@@ -73,7 +73,7 @@ final class SessionTests: BaseTestCase {
     func testPATCHRequest() {
         let exp = expectation(description: "PATCH request should succeed")
 
-        session.request("\(urlString)/patch", method: .PATCH)
+        session.request("\(urlString)/patch", method: .patch)
             .validate()
             .responseData { response in
                 XCTAssertNil(response.error)

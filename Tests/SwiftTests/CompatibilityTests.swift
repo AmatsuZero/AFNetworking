@@ -107,7 +107,7 @@ final class CompatibilityTests: XCTestCase {
 
     func testSwiftTypesExist() {
         // 验证新增 Swift 类型可以正常创建
-        let method: HTTPMethod = .GET
+        let method: HTTPMethod = .get
         XCTAssertEqual(method.rawValue, "GET")
 
         let header = HTTPHeader(name: "Accept", value: "application/json")
@@ -119,7 +119,7 @@ final class CompatibilityTests: XCTestCase {
 
         let descriptor = RequestDescriptor(
             urlString: "https://httpbin.org/get",
-            method: .GET,
+            method: .get,
             parameters: nil,
             encoding: .auto,
             headers: nil

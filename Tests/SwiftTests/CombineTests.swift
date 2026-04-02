@@ -80,7 +80,7 @@ final class CombineTests: XCTestCase {
 
     #if !os(watchOS)
     func testNetworkReachabilityPublisher() {
-        let manager = NetworkReachabilityManager()
+        let manager = NetworkReachabilityManager(domain: "apple.com")
         let publisher = manager.publisher()
         XCTAssertNotNil(publisher)
         manager.stopListening()

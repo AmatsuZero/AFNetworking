@@ -77,7 +77,7 @@ final class RequestResponseTestCase: BaseTestCase {
         var response: DataResponse<TestResponse>?
 
         // When
-        AF.request(Endpoint.method(.POST).urlString, method: .POST, parameters: parameters)
+        AF.request(Endpoint.method(.post).urlString, method: .post, parameters: parameters)
             .responseDecodable(of: TestResponse.self) { closureResponse in
                 response = closureResponse
                 expectation.fulfill()
@@ -129,7 +129,7 @@ final class RequestResponseTestCase: BaseTestCase {
         var receivedResponse: DataResponse<TestResponse>?
 
         // When
-        AF.request(Endpoint.method(.POST).urlString, method: .POST, parameters: parameters, encoding: .json)
+        AF.request(Endpoint.method(.post).urlString, method: .post, parameters: parameters, encoding: .json)
             .responseDecodable(of: TestResponse.self) { response in
                 receivedResponse = response
                 expect.fulfill()
@@ -169,7 +169,7 @@ final class RequestResponseTestCase: BaseTestCase {
         var receivedResponse: DataResponse<TestResponse>?
 
         // When
-        AF.request(Endpoint.method(.POST).urlString, method: .POST, parameters: parameters)
+        AF.request(Endpoint.method(.post).urlString, method: .post, parameters: parameters)
             .responseDecodable(of: TestResponse.self) { response in
                 receivedResponse = response
                 expect.fulfill()
