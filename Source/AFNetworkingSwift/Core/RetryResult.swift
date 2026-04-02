@@ -20,7 +20,7 @@
 // THE SOFTWARE.
 
 import Foundation
-@preconcurrency import AFNetworking
+import AFNetworking
 
 /// 重试决策结果，对齐 Alamofire 的 `RetryResult`。
 /// 底层委托给 OC `AFRetryResult`。

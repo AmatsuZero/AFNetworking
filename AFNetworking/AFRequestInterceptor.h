@@ -20,6 +20,7 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 #import "AFRetryResult.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -27,6 +28,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFRequestAdapter Protocol
 
 /// 请求适配器协议：在请求发送前修改 URLRequest
+AF_SWIFT_SENDABLE
 @protocol AFRequestAdapter <NSObject>
 
 /// 适配请求
@@ -40,6 +42,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFRequestRetrier Protocol
 
 /// 请求重试器协议：在请求失败后决定是否重试
+AF_SWIFT_SENDABLE
 @protocol AFRequestRetrier <NSObject>
 
 /// 决定是否重试
@@ -57,6 +60,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFRequestInterceptor
 
 /// 组合适配器和重试器的拦截器
+AF_SWIFT_SENDABLE
 @interface AFRequestInterceptor : NSObject <AFRequestAdapter, AFRequestRetrier>
 
 @property (nonatomic, strong, readonly, nullable) id<AFRequestAdapter> adapter;
@@ -70,6 +74,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFBlockRequestAdapter
 
 /// 使用 block 实现请求适配
+AF_SWIFT_SENDABLE
 @interface AFBlockRequestAdapter : NSObject <AFRequestAdapter>
 
 - (instancetype)initWithBlock:(void (^)(NSURLRequest *request,
@@ -82,6 +87,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFBlockRequestRetrier
 
 /// 使用 block 实现请求重试决策
+AF_SWIFT_SENDABLE
 @interface AFBlockRequestRetrier : NSObject <AFRequestRetrier>
 
 - (instancetype)initWithBlock:(void (^)(NSURLRequest *request,

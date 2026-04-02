@@ -111,7 +111,7 @@ actor AuthState<A: Authenticator> {
 
 /// 认证拦截器，对齐 Alamofire 的 `AuthenticationInterceptor`。
 /// 自动注入凭据、检测 401 并刷新 token 后重试。
-public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: RequestIntercepting, @unchecked Sendable {
+public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: RequestInterceptor, @unchecked Sendable {
 
     /// 关联的 Session（用于 credential 刷新）
     public weak var session: Session?
@@ -146,7 +146,7 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
         self.state = AuthState<AuthenticatorType>(credential: credential)
     }
 
-    // MARK: - RequestAdapting
+    // MARK: - RequestAdapter
 
     public func adaptRequest(_ request: URLRequest, completion: @escaping @Sendable (URLRequest?, (any Error)?) -> Void) {
         Task {
@@ -167,7 +167,7 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
         }
     }
 
-    // MARK: - RequestRetrying
+    // MARK: - RequestRetrier
 
     public func shouldRetry(_ request: URLRequest, withError error: any Error, retryCount: UInt, completion: @escaping @Sendable (RetryResult, (any Error)?) -> Void) {
         // 此处简化：如果不是 HTTP 响应错误，不重试
@@ -246,7 +246,7 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
 // MARK: - 重试策略
 
 /// 退避重试策略，对齐 Alamofire 的 `RetryPolicy`。
-public final class RetryPolicy: RequestRetrying, @unchecked Sendable {
+public final class RetryPolicy: RequestRetrier, @unchecked Sendable {
 
     /// 最大重试次数
     public let retryLimit: UInt

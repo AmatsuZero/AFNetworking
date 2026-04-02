@@ -899,11 +899,11 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
     if (selector == @selector(URLSession:didReceiveChallenge:completionHandler:)) {
         return self.sessionDidReceiveAuthenticationChallenge != nil;
     } else if (selector == @selector(URLSession:task:willPerformHTTPRedirection:newRequest:completionHandler:)) {
-        return self.taskWillPerformHTTPRedirection != nil;
+        return self.taskWillPerformHTTPRedirection != nil || self.redirectHandler != nil;
     } else if (selector == @selector(URLSession:dataTask:didReceiveResponse:completionHandler:)) {
         return self.dataTaskDidReceiveResponse != nil;
     } else if (selector == @selector(URLSession:dataTask:willCacheResponse:completionHandler:)) {
-        return self.dataTaskWillCacheResponse != nil;
+        return self.dataTaskWillCacheResponse != nil || self.cachedResponseHandler != nil;
     }
 #if !TARGET_OS_OSX
     else if (selector == @selector(URLSessionDidFinishEventsForBackgroundURLSession:)) {
@@ -950,7 +950,9 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 {
     NSURLRequest *redirectRequest = request;
 
-    if (self.taskWillPerformHTTPRedirection) {
+    if (self.redirectHandler) {
+        redirectRequest = [self.redirectHandler task:task willBeRedirectedTo:request forResponse:response];
+    } else if (self.taskWillPerformHTTPRedirection) {
         redirectRequest = self.taskWillPerformHTTPRedirection(session, task, response, request);
     }
 
@@ -1162,7 +1164,9 @@ didBecomeDownloadTask:(NSURLSessionDownloadTask *)downloadTask
 {
     NSCachedURLResponse *cachedResponse = proposedResponse;
 
-    if (self.dataTaskWillCacheResponse) {
+    if (self.cachedResponseHandler) {
+        cachedResponse = [self.cachedResponseHandler dataTask:dataTask willCacheResponse:proposedResponse];
+    } else if (self.dataTaskWillCacheResponse) {
         cachedResponse = self.dataTaskWillCacheResponse(session, dataTask, proposedResponse);
     }
 

@@ -20,7 +20,7 @@
 // THE SOFTWARE.
 
 import Foundation
-@preconcurrency import AFNetworking
+import AFNetworking
 
 /// 控制响应是否写入缓存，对齐 Alamofire 的 `CachedResponseHandler` 概念。
 /// 底层实现委托给 OC 层 `AFCachedResponseHandler` 协议。

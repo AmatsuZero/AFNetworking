@@ -20,7 +20,7 @@
 // THE SOFTWARE.
 
 import Foundation
-@preconcurrency import AFNetworking
+import AFNetworking
 
 /// 控制 HTTP 重定向行为，对齐 Alamofire 的 `RedirectHandler` 概念。
 /// 底层实现委托给 OC 层 `AFRedirectHandler` 协议。

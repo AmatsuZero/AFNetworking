@@ -20,10 +20,12 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 /// 控制 HTTP 重定向行为
+AF_SWIFT_SENDABLE
 @protocol AFRedirectHandler <NSObject>
 
 /// 处理重定向
@@ -44,6 +46,7 @@ typedef NS_ENUM(NSInteger, AFRedirectorBehavior) {
 };
 
 /// 简单重定向策略实现
+AF_SWIFT_SENDABLE
 @interface AFRedirector : NSObject <AFRedirectHandler>
 
 @property (nonatomic, readonly) AFRedirectorBehavior behavior;

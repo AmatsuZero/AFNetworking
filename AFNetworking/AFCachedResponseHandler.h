@@ -20,10 +20,12 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 /// 控制响应是否写入缓存
+AF_SWIFT_SENDABLE
 @protocol AFCachedResponseHandler <NSObject>
 
 /// 决定如何处理缓存响应
@@ -43,6 +45,7 @@ typedef NS_ENUM(NSInteger, AFResponseCacherBehavior) {
 };
 
 /// 简单缓存策略实现
+AF_SWIFT_SENDABLE
 @interface AFResponseCacher : NSObject <AFCachedResponseHandler>
 
 @property (nonatomic, readonly) AFResponseCacherBehavior behavior;

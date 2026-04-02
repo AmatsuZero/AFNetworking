@@ -20,7 +20,7 @@
 // THE SOFTWARE.
 
 import Foundation
-@preconcurrency import AFNetworking
+import AFNetworking
 
 // MARK: - ResponseValidating (Swift protocol bridging AFResponseValidator)
 

@@ -20,6 +20,7 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 #import "AFRequestContext.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -27,6 +28,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFEventMonitorDelegate Protocol
 
 /// 请求生命周期事件 delegate 协议
+AF_SWIFT_SENDABLE
 @protocol AFEventMonitorDelegate <NSObject>
 @optional
 
@@ -66,6 +68,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFEventMonitorCenter
 
 /// 事件监控中心：管理多个 delegate，分发请求生命周期事件
+AF_SWIFT_SENDABLE
 @interface AFEventMonitorCenter : NSObject
 
 + (instancetype)sharedCenter;

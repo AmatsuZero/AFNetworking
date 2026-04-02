@@ -20,6 +20,7 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 #import "AFHTTPHeader.h"
 #import "AFResponseValidator.h"
 #import "AFURLRequestSerialization.h"
@@ -30,14 +31,19 @@ NS_ASSUME_NONNULL_BEGIN
 /// 参数编码方式
 typedef NS_ENUM(NSInteger, AFParameterEncoding) {
     /// 根据 HTTP 方法自动选择（GET 用 URL，POST 用 body）
-    AFParameterEncodingAuto,
+    AFParameterEncodingAuto = 0,
     /// URL 查询参数编码
     AFParameterEncodingURL,
+    /// 强制 HTTP Body 编码
+    AFParameterEncodingHTTPBody,
     /// JSON body 编码
     AFParameterEncodingJSON,
+    /// Property List body 编码
+    AFParameterEncodingPropertyList,
 };
 
 /// 描述单个请求的完整配置
+AF_SWIFT_SENDABLE
 @interface AFRequestDescriptor : NSObject <NSCopying>
 
 /// 请求的 URL 字符串

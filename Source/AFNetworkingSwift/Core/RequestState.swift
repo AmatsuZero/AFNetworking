@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import Foundation
+import AFNetworking
 
 /// 请求上下文的状态
 public enum RequestState: Int, Sendable {
@@ -33,4 +33,14 @@ public enum RequestState: Int, Sendable {
     case cancelled
     /// 已完成
     case finished
+
+    // MARK: - OC Bridging
+
+    init(_ objcState: AFRequestState) {
+        self.init(rawValue: objcState.rawValue)!
+    }
+
+    var objcState: AFRequestState {
+        AFRequestState(rawValue: rawValue)!
+    }
 }

@@ -20,6 +20,7 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -36,6 +37,7 @@ typedef NS_ENUM(NSInteger, AFRetryResultType) {
 };
 
 /// 重试决策结果
+AF_SWIFT_SENDABLE
 @interface AFRetryResult : NSObject
 
 @property (nonatomic, readonly) AFRetryResultType type;

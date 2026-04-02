@@ -20,7 +20,7 @@
 // THE SOFTWARE.
 
 import Foundation
-@preconcurrency import AFNetworking
+import AFNetworking
 
 // MARK: - HTTPHeader (Swift wrapper around AFHTTPHeader)
 
@@ -94,7 +94,12 @@ extension HTTPHeader: CustomStringConvertible {
 public struct HTTPHeaders: Sendable {
 
     /// 底层 OC 对象
-    private var _storage: AFHTTPHeaders
+    internal var _storage: AFHTTPHeaders
+
+    /// 从 OC 对象创建
+    internal init(storage: AFHTTPHeaders) {
+        _storage = storage
+    }
 
     /// 所有头字段的有序数组
     public var headers: [HTTPHeader] {

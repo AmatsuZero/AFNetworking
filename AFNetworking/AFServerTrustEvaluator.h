@@ -22,6 +22,7 @@
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 #import "AFSecurityPolicy.h"
+#import "AFCompatibilityMacros.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -31,6 +32,7 @@ FOUNDATION_EXPORT NSErrorDomain const AFServerTrustErrorDomain;
 // MARK: - AFServerTrustEvaluating Protocol
 
 /// 服务器信任评估协议
+AF_SWIFT_SENDABLE
 @protocol AFServerTrustEvaluating <NSObject>
 
 /// 评估服务器信任
@@ -43,6 +45,7 @@ FOUNDATION_EXPORT NSErrorDomain const AFServerTrustErrorDomain;
 // MARK: - Concrete Evaluators
 
 /// 将现有 AFSecurityPolicy 包装为 AFServerTrustEvaluating 实现
+AF_SWIFT_SENDABLE
 @interface AFSecurityPolicyEvaluator : NSObject <AFServerTrustEvaluating>
 @property (nonatomic, strong, readonly) AFSecurityPolicy *securityPolicy;
 - (instancetype)initWithSecurityPolicy:(AFSecurityPolicy *)securityPolicy NS_DESIGNATED_INITIALIZER;
@@ -51,10 +54,12 @@ FOUNDATION_EXPORT NSErrorDomain const AFServerTrustErrorDomain;
 @end
 
 /// 默认信任评估器：系统证书链验证
+AF_SWIFT_SENDABLE
 @interface AFDefaultTrustEvaluator : NSObject <AFServerTrustEvaluating>
 @end
 
 /// 证书 Pinning 评估器
+AF_SWIFT_SENDABLE
 @interface AFPinnedCertificatesTrustEvaluator : NSObject <AFServerTrustEvaluating>
 - (instancetype)initWithCertificates:(nullable NSSet<NSData *> *)certificates
               validateCertificateChain:(BOOL)validateCertificateChain NS_DESIGNATED_INITIALIZER;
@@ -65,6 +70,7 @@ FOUNDATION_EXPORT NSErrorDomain const AFServerTrustErrorDomain;
 @end
 
 /// 公钥 Pinning 评估器
+AF_SWIFT_SENDABLE
 @interface AFPublicKeysTrustEvaluator : NSObject <AFServerTrustEvaluating>
 - (instancetype)initWithCertificates:(nullable NSSet<NSData *> *)certificates NS_DESIGNATED_INITIALIZER;
 /// 从 main bundle 加载证书
@@ -74,10 +80,12 @@ FOUNDATION_EXPORT NSErrorDomain const AFServerTrustErrorDomain;
 @end
 
 /// 禁用信任评估器（仅调试用）
+AF_SWIFT_SENDABLE
 @interface AFDisabledTrustEvaluator : NSObject <AFServerTrustEvaluating>
 @end
 
 /// 组合评估器：依次运行多个评估器
+AF_SWIFT_SENDABLE
 @interface AFCompositeTrustEvaluator : NSObject <AFServerTrustEvaluating>
 - (instancetype)initWithEvaluators:(NSArray<id<AFServerTrustEvaluating>> *)evaluators NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
@@ -87,6 +95,7 @@ FOUNDATION_EXPORT NSErrorDomain const AFServerTrustErrorDomain;
 // MARK: - AFServerTrustManager
 
 /// 管理多个 host 的服务器信任评估策略
+AF_SWIFT_SENDABLE
 @interface AFServerTrustManager : NSObject
 @property (nonatomic, copy, readonly) NSDictionary<NSString *, id<AFServerTrustEvaluating>> *evaluators;
 @property (nonatomic, assign) BOOL allHostsMustBeEvaluated;

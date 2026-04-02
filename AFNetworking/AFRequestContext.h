@@ -20,6 +20,7 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 #import "AFRequestDescriptor.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -34,6 +35,7 @@ typedef NS_ENUM(NSInteger, AFRequestState) {
 };
 
 /// 单个请求的运行时上下文
+AF_SWIFT_SENDABLE
 @interface AFRequestContext : NSObject
 
 /// 请求描述（不可变配置）

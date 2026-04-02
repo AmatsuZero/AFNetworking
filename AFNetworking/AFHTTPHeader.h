@@ -20,10 +20,12 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 /// 单个 HTTP 头字段的名值对
+AF_SWIFT_SENDABLE
 @interface AFHTTPHeader : NSObject <NSCopying>
 
 /// 头字段名称
@@ -51,6 +53,7 @@ NS_ASSUME_NONNULL_BEGIN
 // MARK: - AFHTTPHeaders
 
 /// 有序 HTTP 头字段集合。保持插入顺序并支持按名称去重（case-insensitive）。
+AF_SWIFT_SENDABLE
 @interface AFHTTPHeaders : NSObject <NSFastEnumeration, NSCopying>
 
 /// 以字典形式返回所有头字段（同名取最后一个值）

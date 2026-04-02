@@ -25,112 +25,98 @@ import Security
 import AFNetworking
 #endif
 
-/// 服务器信任管理错误域
-public let ServerTrustManagerErrorDomain = "com.alamofire.error.servertrust"
-
 // MARK: - ServerTrustEvaluating
 
 /// 服务器信任评估接口，对齐 Alamofire 的 `ServerTrustEvaluating`。
+/// Swift throws 语义无法直接桥接 OC BOOL+NSError**，因此保留独立协议。
 public protocol ServerTrustEvaluating: Sendable {
-    /// 评估服务器信任
-    /// - Parameters:
-    ///   - serverTrust: 服务器信任对象
-    ///   - host: 主机名
-    /// - Throws: 评估失败时抛出错误
     func evaluate(_ serverTrust: SecTrust, forHost host: String) throws
+}
+
+// MARK: - Helper: bridge OC evaluator to Swift throws
+
+private func evaluateWithObjC(_ evaluator: any AFServerTrustEvaluating,
+                               serverTrust: SecTrust,
+                               host: String) throws {
+    try evaluator.evaluateServerTrust(serverTrust, forHost: host)
 }
 
 // MARK: - SecurityPolicyEvaluator
 
 /// 将现有 `AFSecurityPolicy` 包装为 `ServerTrustEvaluating` 实现。
-/// 桥接旧 API 与新抽象的适配器。
+/// 桥接旧 API 与新抽象的适配器。底层委托 OC `AFSecurityPolicyEvaluator`。
 public final class SecurityPolicyEvaluator: ServerTrustEvaluating, @unchecked Sendable {
 
-    /// 底层安全策略
-    public let securityPolicy: AFSecurityPolicy
+    private let _evaluator: AFSecurityPolicyEvaluator
 
-    /// 使用安全策略创建
+    /// 底层安全策略
+    public var securityPolicy: AFSecurityPolicy { _evaluator.securityPolicy }
+
     public init(securityPolicy: AFSecurityPolicy) {
-        self.securityPolicy = securityPolicy
+        self._evaluator = AFSecurityPolicyEvaluator(securityPolicy: securityPolicy)
     }
 
     public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
-        if !securityPolicy.evaluateServerTrust(serverTrust, forDomain: host) {
-            throw NSError(domain: ServerTrustManagerErrorDomain,
-                          code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Server trust evaluation failed for host: \(host)"])
-        }
+        try evaluateWithObjC(_evaluator, serverTrust: serverTrust, host: host)
     }
 }
 
 // MARK: - Concrete Evaluators
 
-/// 默认信任评估器：系统证书链验证，不允许无效证书（对齐 Alamofire `DefaultTrustEvaluator`）。
+/// 默认信任评估器：系统证书链验证（对齐 Alamofire `DefaultTrustEvaluator`）。
+/// 底层委托 OC `AFDefaultTrustEvaluator`。
 public struct DefaultTrustEvaluator: ServerTrustEvaluating, Sendable {
+    private let _evaluator = AFDefaultTrustEvaluator()
+
     public init() {}
 
     public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
-        let policy = AFSecurityPolicy(pinningMode: .none)
-        policy.allowInvalidCertificates = false
-        policy.validatesDomainName = true
-        if !policy.evaluateServerTrust(serverTrust, forDomain: host) {
-            throw NSError(domain: ServerTrustManagerErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Server trust evaluation failed for host: \(host)"])
-        }
+        try evaluateWithObjC(_evaluator, serverTrust: serverTrust, host: host)
     }
 }
 
 /// 证书 Pinning 评估器（对齐 Alamofire `PinnedCertificatesTrustEvaluator`）。
+/// 底层委托 OC `AFPinnedCertificatesTrustEvaluator`。
 public struct PinnedCertificatesTrustEvaluator: ServerTrustEvaluating, @unchecked Sendable {
-    private let certificates: Set<Data>
-    private let validateCertificateChain: Bool
+    private let _evaluator: AFPinnedCertificatesTrustEvaluator
 
     /// - Parameters:
     ///   - certificates: DER 编码的证书数据集合。传 `nil` 时自动从 main bundle 加载。
     ///   - validateCertificateChain: 是否验证完整证书链，默认 `true`。
     public init(certificates: Set<Data>? = nil, validateCertificateChain: Bool = true) {
-        self.certificates = certificates ?? AFSecurityPolicy.certificates(in: .main)
-        self.validateCertificateChain = validateCertificateChain
+        self._evaluator = AFPinnedCertificatesTrustEvaluator(
+            certificates: certificates,
+            validateCertificateChain: validateCertificateChain)
     }
 
     public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
-        let policy = AFSecurityPolicy(pinningMode: .certificate)
-        policy.pinnedCertificates = certificates
-        policy.allowInvalidCertificates = !validateCertificateChain
-        policy.validatesDomainName = true
-        if !policy.evaluateServerTrust(serverTrust, forDomain: host) {
-            throw NSError(domain: ServerTrustManagerErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Pinned certificate evaluation failed for host: \(host)"])
-        }
+        try evaluateWithObjC(_evaluator, serverTrust: serverTrust, host: host)
     }
 }
 
 /// 公钥 Pinning 评估器（对齐 Alamofire `PublicKeysTrustEvaluator`）。
+/// 底层委托 OC `AFPublicKeysTrustEvaluator`。
 public struct PublicKeysTrustEvaluator: ServerTrustEvaluating, @unchecked Sendable {
-    private let certificates: Set<Data>
+    private let _evaluator: AFPublicKeysTrustEvaluator
 
     public init(certificates: Set<Data>? = nil) {
-        self.certificates = certificates ?? AFSecurityPolicy.certificates(in: .main)
+        self._evaluator = AFPublicKeysTrustEvaluator(certificates: certificates)
     }
 
     public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
-        let policy = AFSecurityPolicy(pinningMode: .publicKey)
-        policy.pinnedCertificates = certificates
-        policy.allowInvalidCertificates = false
-        policy.validatesDomainName = true
-        if !policy.evaluateServerTrust(serverTrust, forDomain: host) {
-            throw NSError(domain: ServerTrustManagerErrorDomain, code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Public key pinning evaluation failed for host: \(host)"])
-        }
+        try evaluateWithObjC(_evaluator, serverTrust: serverTrust, host: host)
     }
 }
 
 /// 禁用信任评估器：允许所有证书，**仅用于调试**（对齐 Alamofire `DisabledTrustEvaluator`）。
+/// 底层委托 OC `AFDisabledTrustEvaluator`。
 public struct DisabledTrustEvaluator: ServerTrustEvaluating, Sendable {
+    private let _evaluator = AFDisabledTrustEvaluator()
+
     public init() {}
 
     public func evaluate(_ serverTrust: SecTrust, forHost host: String) throws {
-        // 不做任何验证 — 仅限调试环境使用
+        try evaluateWithObjC(_evaluator, serverTrust: serverTrust, host: host)
     }
 }
 
@@ -160,7 +146,6 @@ public final class ServerTrustManager: @unchecked Sendable {
     /// 当请求的 host 不在映射中时，是否必须评估。默认 false（与现有 AFN 行为一致）。
     public var allUntrustedHostsMustBeEvaluated: Bool
 
-    /// 使用 evaluator 映射创建
     public init(evaluators: [String: any ServerTrustEvaluating],
                 allUntrustedHostsMustBeEvaluated: Bool = false) {
         self.evaluators = evaluators
@@ -177,7 +162,7 @@ public final class ServerTrustManager: @unchecked Sendable {
         if let evaluator = evaluators[host] {
             try evaluator.evaluate(serverTrust, forHost: host)
         } else if allUntrustedHostsMustBeEvaluated {
-            throw NSError(domain: ServerTrustManagerErrorDomain,
+            throw NSError(domain: AFServerTrustErrorDomain,
                           code: -2,
                           userInfo: [NSLocalizedDescriptionKey: "No evaluator found for host: \(host)"])
         }

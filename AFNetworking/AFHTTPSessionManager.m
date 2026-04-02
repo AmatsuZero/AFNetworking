@@ -272,14 +272,66 @@
         return nil;
     }
 
+    // Adapter: 在 headers 添加后、创建 task 前修改 request
+    if (self.requestAdapter) {
+        dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+        __block NSMutableURLRequest *adaptedRequest = request;
+        __block NSError *adaptError = nil;
+        [self.requestAdapter adaptRequest:request completion:^(NSURLRequest * _Nullable result, NSError * _Nullable error) {
+            if (result) {
+                adaptedRequest = [result mutableCopy];
+            }
+            adaptError = error;
+            dispatch_semaphore_signal(sem);
+        }];
+        dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+        if (adaptError) {
+            if (failure) {
+                dispatch_async(self.completionQueue ?: dispatch_get_main_queue(), ^{
+                    failure(nil, adaptError);
+                });
+            }
+            return nil;
+        }
+        request = adaptedRequest;
+    }
+
     __block NSURLSessionDataTask *dataTask = nil;
+    __weak __typeof(self) weakSelf = self;
     dataTask = [self dataTaskWithRequest:request
                           uploadProgress:uploadProgress
                         downloadProgress:downloadProgress
                        completionHandler:^(NSURLResponse * __unused response, id responseObject, NSError *error) {
         if (error) {
-            if (failure) {
-                failure(dataTask, error);
+            // Retrier: 失败时决定是否重试
+            if (weakSelf.requestRetrier) {
+                [weakSelf.requestRetrier shouldRetryRequest:request
+                                                  withError:error
+                                                 retryCount:0
+                                                 completion:^(AFRetryResult *result) {
+                    if (result.type == AFRetryResultTypeRetry || result.type == AFRetryResultTypeRetryWithDelay) {
+                        NSTimeInterval delay = result.delay;
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                                       weakSelf.completionQueue ?: dispatch_get_main_queue(), ^{
+                            [weakSelf dataTaskWithHTTPMethod:method
+                                                  URLString:URLString
+                                                 parameters:parameters
+                                                    headers:headers
+                                             uploadProgress:uploadProgress
+                                           downloadProgress:downloadProgress
+                                                    success:success
+                                                    failure:failure];
+                        });
+                    } else {
+                        if (failure) {
+                            failure(dataTask, result.error ?: error);
+                        }
+                    }
+                }];
+            } else {
+                if (failure) {
+                    failure(dataTask, error);
+                }
             }
         } else {
             if (success) {
@@ -289,6 +341,75 @@
     }];
 
     return dataTask;
+}
+
+#pragma mark - AFHTTPHeaders convenience methods
+
+- (NSURLSessionDataTask *)GET:(NSString *)URLString
+                   parameters:(id)parameters
+                 headerFields:(AFHTTPHeaders *)headers
+                     progress:(void (^)(NSProgress *))downloadProgress
+                      success:(void (^)(NSURLSessionDataTask *, id _Nullable))success
+                      failure:(void (^)(NSURLSessionDataTask * _Nullable, NSError *))failure
+{
+    return [self GET:URLString parameters:parameters headers:[headers dictionary] progress:downloadProgress success:success failure:failure];
+}
+
+- (NSURLSessionDataTask *)HEAD:(NSString *)URLString
+                    parameters:(id)parameters
+                  headerFields:(AFHTTPHeaders *)headers
+                       success:(void (^)(NSURLSessionDataTask *))success
+                       failure:(void (^)(NSURLSessionDataTask * _Nullable, NSError *))failure
+{
+    return [self HEAD:URLString parameters:parameters headers:[headers dictionary] success:success failure:failure];
+}
+
+- (NSURLSessionDataTask *)POST:(NSString *)URLString
+                    parameters:(id)parameters
+                  headerFields:(AFHTTPHeaders *)headers
+                      progress:(void (^)(NSProgress *))uploadProgress
+                       success:(void (^)(NSURLSessionDataTask *, id _Nullable))success
+                       failure:(void (^)(NSURLSessionDataTask * _Nullable, NSError *))failure
+{
+    return [self POST:URLString parameters:parameters headers:[headers dictionary] progress:uploadProgress success:success failure:failure];
+}
+
+- (NSURLSessionDataTask *)POST:(NSString *)URLString
+                    parameters:(id)parameters
+                  headerFields:(AFHTTPHeaders *)headers
+     constructingBodyWithBlock:(void (^)(id<AFMultipartFormData>))block
+                      progress:(void (^)(NSProgress *))uploadProgress
+                       success:(void (^)(NSURLSessionDataTask *, id _Nullable))success
+                       failure:(void (^)(NSURLSessionDataTask * _Nullable, NSError *))failure
+{
+    return [self POST:URLString parameters:parameters headers:[headers dictionary] constructingBodyWithBlock:block progress:uploadProgress success:success failure:failure];
+}
+
+- (NSURLSessionDataTask *)PUT:(NSString *)URLString
+                   parameters:(id)parameters
+                 headerFields:(AFHTTPHeaders *)headers
+                      success:(void (^)(NSURLSessionDataTask *, id _Nullable))success
+                      failure:(void (^)(NSURLSessionDataTask * _Nullable, NSError *))failure
+{
+    return [self PUT:URLString parameters:parameters headers:[headers dictionary] success:success failure:failure];
+}
+
+- (NSURLSessionDataTask *)PATCH:(NSString *)URLString
+                     parameters:(id)parameters
+                   headerFields:(AFHTTPHeaders *)headers
+                        success:(void (^)(NSURLSessionDataTask *, id _Nullable))success
+                        failure:(void (^)(NSURLSessionDataTask * _Nullable, NSError *))failure
+{
+    return [self PATCH:URLString parameters:parameters headers:[headers dictionary] success:success failure:failure];
+}
+
+- (NSURLSessionDataTask *)DELETE:(NSString *)URLString
+                      parameters:(id)parameters
+                    headerFields:(AFHTTPHeaders *)headers
+                         success:(void (^)(NSURLSessionDataTask *, id _Nullable))success
+                         failure:(void (^)(NSURLSessionDataTask * _Nullable, NSError *))failure
+{
+    return [self DELETE:URLString parameters:parameters headers:[headers dictionary] success:success failure:failure];
 }
 
 #pragma mark - NSObject

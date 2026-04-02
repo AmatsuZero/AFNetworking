@@ -26,6 +26,8 @@
 #import <TargetConditionals.h>
 
 #import "AFURLSessionManager.h"
+#import "AFRequestInterceptor.h"
+#import "AFHTTPHeader.h"
 
 /**
  `AFHTTPSessionManager` is a subclass of `AFURLSessionManager` with convenience methods for making HTTP requests. When a `baseURL` is provided, requests made with the `GET` / `POST` / et al. convenience methods can be made with relative paths.
@@ -85,6 +87,22 @@ NS_ASSUME_NONNULL_BEGIN
  @warning `responseSerializer` must not be `nil`.
  */
 @property (nonatomic, strong) AFHTTPResponseSerializer <AFURLResponseSerialization> * responseSerializer;
+
+///-------------------------------
+/// @name Request Interceptor
+///-------------------------------
+
+/**
+ The request adapter used to modify requests before they are sent. When set, the adapter's
+ `adaptRequest:completion:` is called after headers are applied but before the task is created.
+ */
+@property (nullable, nonatomic, strong) id<AFRequestAdapter> requestAdapter;
+
+/**
+ The request retrier used to retry failed requests. When set, the retrier's
+ `shouldRetryRequest:withError:retryCount:completion:` is called on failure to decide whether to retry.
+ */
+@property (nullable, nonatomic, strong) id<AFRequestRetrier> requestRetrier;
 
 ///-------------------------------
 /// @name Managing Security Policy
@@ -279,6 +297,56 @@ NS_ASSUME_NONNULL_BEGIN
                                          downloadProgress:(nullable void (^)(NSProgress *downloadProgress))downloadProgress
                                                   success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
                                                   failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
+
+///------------------------------------------
+/// @name Making HTTP Requests (AFHTTPHeaders)
+///------------------------------------------
+
+- (nullable NSURLSessionDataTask *)GET:(NSString *)URLString
+                            parameters:(nullable id)parameters
+                          headerFields:(nullable AFHTTPHeaders *)headers
+                              progress:(nullable void (^)(NSProgress *downloadProgress))downloadProgress
+                               success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                               failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
+
+- (nullable NSURLSessionDataTask *)HEAD:(NSString *)URLString
+                             parameters:(nullable id)parameters
+                           headerFields:(nullable AFHTTPHeaders *)headers
+                                success:(nullable void (^)(NSURLSessionDataTask *task))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
+
+- (nullable NSURLSessionDataTask *)POST:(NSString *)URLString
+                             parameters:(nullable id)parameters
+                           headerFields:(nullable AFHTTPHeaders *)headers
+                               progress:(nullable void (^)(NSProgress *uploadProgress))uploadProgress
+                                success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
+
+- (nullable NSURLSessionDataTask *)POST:(NSString *)URLString
+                             parameters:(nullable id)parameters
+                           headerFields:(nullable AFHTTPHeaders *)headers
+              constructingBodyWithBlock:(nullable void (^)(id <AFMultipartFormData> formData))block
+                               progress:(nullable void (^)(NSProgress *uploadProgress))uploadProgress
+                                success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
+
+- (nullable NSURLSessionDataTask *)PUT:(NSString *)URLString
+                            parameters:(nullable id)parameters
+                          headerFields:(nullable AFHTTPHeaders *)headers
+                               success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                               failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
+
+- (nullable NSURLSessionDataTask *)PATCH:(NSString *)URLString
+                              parameters:(nullable id)parameters
+                            headerFields:(nullable AFHTTPHeaders *)headers
+                                 success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                 failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
+
+- (nullable NSURLSessionDataTask *)DELETE:(NSString *)URLString
+                               parameters:(nullable id)parameters
+                             headerFields:(nullable AFHTTPHeaders *)headers
+                                  success:(nullable void (^)(NSURLSessionDataTask *task, id _Nullable responseObject))success
+                                  failure:(nullable void (^)(NSURLSessionDataTask * _Nullable task, NSError *error))failure;
 
 @end
 

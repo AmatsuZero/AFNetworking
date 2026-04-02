@@ -20,6 +20,7 @@
 // THE SOFTWARE.
 
 #import <Foundation/Foundation.h>
+#import "AFCompatibilityMacros.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -48,6 +49,7 @@ FOUNDATION_EXPORT NSString * const AFResponseValidationErrorAcceptableContentTyp
 // MARK: - AFResponseValidator Protocol
 
 /// 响应验证器协议
+AF_SWIFT_SENDABLE
 @protocol AFResponseValidator <NSObject>
 
 /// 验证响应
@@ -63,6 +65,7 @@ FOUNDATION_EXPORT NSString * const AFResponseValidationErrorAcceptableContentTyp
 // MARK: - AFStatusCodeValidator
 
 /// 验证响应状态码是否在可接受范围内
+AF_SWIFT_SENDABLE
 @interface AFStatusCodeValidator : NSObject <AFResponseValidator>
 
 /// 可接受的状态码集合
@@ -82,6 +85,7 @@ FOUNDATION_EXPORT NSString * const AFResponseValidationErrorAcceptableContentTyp
 // MARK: - AFContentTypeValidator
 
 /// 验证响应 Content-Type 是否在可接受范围内。支持通配符匹配（如 "text/*"）。
+AF_SWIFT_SENDABLE
 @interface AFContentTypeValidator : NSObject <AFResponseValidator>
 
 /// 可接受的 Content-Type 集合
@@ -98,6 +102,7 @@ FOUNDATION_EXPORT NSString * const AFResponseValidationErrorAcceptableContentTyp
 // MARK: - AFBlockResponseValidator
 
 /// 使用 block 实现自定义验证逻辑
+AF_SWIFT_SENDABLE
 @interface AFBlockResponseValidator : NSObject <AFResponseValidator>
 
 /// 使用 block 创建验证器

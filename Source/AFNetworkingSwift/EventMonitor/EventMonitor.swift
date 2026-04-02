@@ -20,7 +20,7 @@
 // THE SOFTWARE.
 
 import Foundation
-@preconcurrency import AFNetworking
+import AFNetworking
 
 // MARK: - OC types re-exported
 
@@ -49,9 +49,20 @@ public final class EventMonitor: @unchecked Sendable {
 
     public init() {}
 
-    /// 发布一个事件（内部使用）
+    /// 发布一个事件，桥接到 OC AFEventMonitorCenter
     func send(_ event: RequestEvent) {
-        // 事件分发点：当 RequestContext 迁移为 AFRequestContext 包装后，
-        // 此处将桥接到 AFEventMonitorCenter.shared() 的对应 notify 方法。
+        let center = AFEventMonitorCenter.shared()
+        switch event {
+        case .created(let ctx):
+            center.notifyRequestDidCreate(ctx.storage)
+        case .resumed(let ctx):
+            center.notifyRequestDidResume(ctx.storage)
+        case .suspended(let ctx):
+            center.notifyRequestDidSuspend(ctx.storage)
+        case .cancelled(let ctx):
+            center.notifyRequestDidCancel(ctx.storage)
+        case .finished(let ctx):
+            center.notifyRequestDidFinish(ctx.storage)
+        }
     }
 }

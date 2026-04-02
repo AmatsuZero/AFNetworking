@@ -26,6 +26,8 @@
 #import "AFURLRequestSerialization.h"
 #import "AFSecurityPolicy.h"
 #import "AFCompatibilityMacros.h"
+#import "AFCachedResponseHandler.h"
+#import "AFRedirectHandler.h"
 #if !TARGET_OS_WATCH
 #import "AFNetworkReachabilityManager.h"
 #endif
@@ -115,6 +117,22 @@ NS_ASSUME_NONNULL_BEGIN
  The security policy used by created session to evaluate server trust for secure connections. `AFURLSessionManager` uses the `defaultPolicy` unless otherwise specified.
  */
 @property (nonatomic, strong) AFSecurityPolicy *securityPolicy;
+
+///-------------------------------
+/// @name Cached Response / Redirect Handlers
+///-------------------------------
+
+/**
+ The cached response handler used to determine caching behavior for data tasks.
+ When set, takes priority over the `dataTaskWillCacheResponse` block.
+ */
+@property (nullable, nonatomic, strong) id<AFCachedResponseHandler> cachedResponseHandler;
+
+/**
+ The redirect handler used to determine redirect behavior for tasks.
+ When set, takes priority over the `taskWillPerformHTTPRedirection` block.
+ */
+@property (nullable, nonatomic, strong) id<AFRedirectHandler> redirectHandler;
 
 #if !TARGET_OS_WATCH
 ///--------------------------------------

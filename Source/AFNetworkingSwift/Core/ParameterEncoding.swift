@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import Foundation
+import AFNetworking
 
 /// 参数编码位置
 public enum ParameterEncoding: Int, Sendable {
@@ -33,4 +33,14 @@ public enum ParameterEncoding: Int, Sendable {
     case json
     /// Property List Body 编码
     case propertyList
+
+    // MARK: - OC Bridging
+
+    init(_ objcEncoding: AFParameterEncoding) {
+        self.init(rawValue: objcEncoding.rawValue)!
+    }
+
+    var objcEncoding: AFParameterEncoding {
+        AFParameterEncoding(rawValue: rawValue)!
+    }
 }

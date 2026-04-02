@@ -85,7 +85,7 @@ public class Session: @unchecked Sendable {
     public let sessionManager: AFHTTPSessionManager
 
     /// Session 级别的拦截器
-    public let interceptor: (any RequestIntercepting)?
+    public let interceptor: (any RequestInterceptor)?
 
     /// Combine-based 事件监控器
     public let eventMonitor: EventMonitor
@@ -113,7 +113,7 @@ public class Session: @unchecked Sendable {
 
     /// 创建 Session
     public init(configuration: URLSessionConfiguration = .default,
-                interceptor: (any RequestIntercepting)? = nil,
+                interceptor: (any RequestInterceptor)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
                 cachedResponseHandler: (any CachedResponseHandler)? = nil,
                 redirectHandler: (any RedirectHandler)? = nil,
@@ -132,7 +132,7 @@ public class Session: @unchecked Sendable {
 
     /// 使用现有 AFHTTPSessionManager 创建 Session
     public init(sessionManager: AFHTTPSessionManager,
-                interceptor: (any RequestIntercepting)? = nil,
+                interceptor: (any RequestInterceptor)? = nil,
                 serverTrustManager: ServerTrustManager? = nil,
                 cachedResponseHandler: (any CachedResponseHandler)? = nil,
                 redirectHandler: (any RedirectHandler)? = nil,
@@ -169,7 +169,7 @@ public class Session: @unchecked Sendable {
                              parameters: [String: Any]?,
                              encoding: ParameterEncoding,
                              headers: HTTPHeaders?,
-                             interceptor: (any RequestIntercepting)?) -> RequestContext {
+                             interceptor: (any RequestInterceptor)?) -> RequestContext {
         let descriptor = RequestDescriptor(
             urlString: urlString,
             method: method,
@@ -189,7 +189,7 @@ public class Session: @unchecked Sendable {
                         parameters: [String: Any]? = nil,
                         encoding: ParameterEncoding = .auto,
                         headers: HTTPHeaders? = nil,
-                        interceptor: (any RequestIntercepting)? = nil) -> DataRequest {
+                        interceptor: (any RequestInterceptor)? = nil) -> DataRequest {
         let context = makeContext(urlString: convertible, method: method, parameters: parameters,
                                  encoding: encoding, headers: headers, interceptor: interceptor)
         let request = DataRequest(context: context, session: self)
@@ -209,7 +209,7 @@ public class Session: @unchecked Sendable {
                          parameters: [String: Any]? = nil,
                          encoding: ParameterEncoding = .auto,
                          headers: HTTPHeaders? = nil,
-                         interceptor: (any RequestIntercepting)? = nil,
+                         interceptor: (any RequestInterceptor)? = nil,
                          to destination: DownloadDestination? = nil) -> DownloadRequest {
         let context = makeContext(urlString: convertible, method: method, parameters: parameters,
                                  encoding: encoding, headers: headers, interceptor: interceptor)
@@ -225,7 +225,7 @@ public class Session: @unchecked Sendable {
     /// 断点续传下载（P1-3）
     @discardableResult
     public func download(resumingWith resumeData: Data,
-                         interceptor: (any RequestIntercepting)? = nil,
+                         interceptor: (any RequestInterceptor)? = nil,
                          to destination: DownloadDestination? = nil) -> DownloadRequest {
         let descriptor = RequestDescriptor(urlString: "", method: .get, parameters: nil,
                                            encoding: .auto, headers: nil)
@@ -248,7 +248,7 @@ public class Session: @unchecked Sendable {
                        to urlString: String,
                        method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
-                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,
                                  encoding: .auto, headers: headers, interceptor: interceptor)
         let request = UploadRequest(uploadable: .data(data), context: context, session: self)
@@ -266,7 +266,7 @@ public class Session: @unchecked Sendable {
                        to urlString: String,
                        method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
-                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,
                                  encoding: .auto, headers: headers, interceptor: interceptor)
         let request = UploadRequest(uploadable: .file(fileURL), context: context, session: self)
@@ -284,7 +284,7 @@ public class Session: @unchecked Sendable {
                        to urlString: String,
                        method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
-                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,
                                  encoding: .auto, headers: headers, interceptor: interceptor)
         let request = UploadRequest(uploadable: .stream(stream), context: context, session: self)
@@ -302,7 +302,7 @@ public class Session: @unchecked Sendable {
                        to urlString: String,
                        method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
-                       interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,
                                  encoding: .auto, headers: headers, interceptor: interceptor)
         let request = UploadRequest(uploadable: .multipartFormData(formDataBuilder),
