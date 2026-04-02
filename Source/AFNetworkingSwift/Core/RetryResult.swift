@@ -24,7 +24,7 @@ import AFNetworking
 
 /// 重试决策结果，对齐 Alamofire 的 `RetryResult`。
 /// 底层委托给 OC `AFRetryResult`。
-public enum RetryResult: Sendable {
+public enum RetryResult: Sendable, Equatable {
     /// 执行重试
     case retry
     /// 延迟重试
@@ -33,6 +33,17 @@ public enum RetryResult: Sendable {
     case doNotRetry
     /// 不重试，使用指定错误
     case doNotRetryWithError(any Error)
+
+    public static func == (lhs: RetryResult, rhs: RetryResult) -> Bool {
+        switch (lhs, rhs) {
+        case (.retry, .retry): return true
+        case (.retryWithDelay(let l), .retryWithDelay(let r)): return l == r
+        case (.doNotRetry, .doNotRetry): return true
+        case (.doNotRetryWithError(let l), .doNotRetryWithError(let r)):
+            return (l as NSError) == (r as NSError)
+        default: return false
+        }
+    }
 
     /// 转为 OC AFRetryResult
     public var objcResult: AFRetryResult {

@@ -46,6 +46,7 @@
     #import "AFRequestDescriptor.h"
     #import "AFRequestContext.h"
     #import "AFRequestInterceptor.h"
+    #import "AFRetryPolicy.h"
     #import "AFEventMonitor.h"
 
 #endif /* _AFNETWORKING_ */

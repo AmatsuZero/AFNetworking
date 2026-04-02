@@ -41,15 +41,31 @@ public enum RequestEvent: Sendable {
     case finished(RequestContext)
 }
 
+// MARK: - Request Notification Names
+
+/// 请求生命周期 NSNotification 名称，对齐 Alamofire 的通知常量。
+/// OC 和 Swift 用户均可通过 `NotificationCenter.default` 监听。
+public extension Request {
+    /// 请求已恢复执行
+    static let didResumeNotification = Notification.Name(rawValue: "com.alamofire.notification.request.didResume")
+    /// 请求已暂停
+    static let didSuspendNotification = Notification.Name(rawValue: "com.alamofire.notification.request.didSuspend")
+    /// 请求已取消
+    static let didCancelNotification = Notification.Name(rawValue: "com.alamofire.notification.request.didCancel")
+    /// 请求已完成
+    static let didFinishNotification = Notification.Name(rawValue: "com.alamofire.notification.request.didFinish")
+}
+
 // MARK: - EventMonitor (Swift 层轻量事件分发器)
 
-/// Swift 层事件监控器，替代 Combine 实现。
+/// Swift 层事件监控器。
 /// OC 用户使用 `AFEventMonitorCenter` + delegate 模式。
+/// 同时通过 `NotificationCenter.default` 发送 NSNotification，方便两层监听。
 public final class EventMonitor: @unchecked Sendable {
 
     public init() {}
 
-    /// 发布一个事件，桥接到 OC AFEventMonitorCenter
+    /// 发布一个事件，桥接到 OC AFEventMonitorCenter 并发送 NSNotification
     func send(_ event: RequestEvent) {
         let center = AFEventMonitorCenter.shared()
         switch event {
@@ -57,12 +73,21 @@ public final class EventMonitor: @unchecked Sendable {
             center.notifyRequestDidCreate(ctx.storage)
         case .resumed(let ctx):
             center.notifyRequestDidResume(ctx.storage)
+            postNotification(Request.didResumeNotification, context: ctx)
         case .suspended(let ctx):
             center.notifyRequestDidSuspend(ctx.storage)
+            postNotification(Request.didSuspendNotification, context: ctx)
         case .cancelled(let ctx):
             center.notifyRequestDidCancel(ctx.storage)
+            postNotification(Request.didCancelNotification, context: ctx)
         case .finished(let ctx):
             center.notifyRequestDidFinish(ctx.storage)
+            postNotification(Request.didFinishNotification, context: ctx)
         }
+    }
+
+    /// 发送 NSNotification，userInfo 包含 RequestContext
+    private func postNotification(_ name: Notification.Name, context: RequestContext) {
+        NotificationCenter.default.post(name: name, object: context, userInfo: ["context": context])
     }
 }

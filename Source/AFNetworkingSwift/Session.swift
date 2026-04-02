@@ -201,6 +201,33 @@ public class Session: @unchecked Sendable {
         return request
     }
 
+    /// URLConvertible 重载 — 接受 `URL`、`URLComponents` 等遵循 `URLConvertible` 的类型。
+    @discardableResult
+    public func request(_ convertible: any URLConvertible,
+                        method: HTTPMethod = .get,
+                        parameters: [String: Any]? = nil,
+                        encoding: ParameterEncoding = .auto,
+                        headers: HTTPHeaders? = nil,
+                        interceptor: (any RequestInterceptor)? = nil) -> DataRequest {
+        let urlString: String
+        do {
+            urlString = try convertible.asURL().absoluteString
+        } catch {
+            // 创建一个立即失败的请求
+            let ctx = makeContext(urlString: "", method: method, parameters: parameters,
+                                 encoding: encoding, headers: headers, interceptor: interceptor)
+            ctx.error = error
+            ctx.state = .finished
+            let request = DataRequest(context: ctx, session: self)
+            eventMonitor.send(.created(ctx))
+            eventMonitor.send(.finished(ctx))
+            trackRequest(request)
+            return request
+        }
+        return self.request(urlString, method: method, parameters: parameters,
+                            encoding: encoding, headers: headers, interceptor: interceptor)
+    }
+
     // MARK: - Download Request
 
     @discardableResult
@@ -220,6 +247,34 @@ public class Session: @unchecked Sendable {
         performDownloadRequest(request)
 
         return request
+    }
+
+    /// URLConvertible 重载
+    @discardableResult
+    public func download(_ convertible: any URLConvertible,
+                         method: HTTPMethod = .get,
+                         parameters: [String: Any]? = nil,
+                         encoding: ParameterEncoding = .auto,
+                         headers: HTTPHeaders? = nil,
+                         interceptor: (any RequestInterceptor)? = nil,
+                         to destination: DownloadDestination? = nil) -> DownloadRequest {
+        let urlString: String
+        do {
+            urlString = try convertible.asURL().absoluteString
+        } catch {
+            let ctx = makeContext(urlString: "", method: method, parameters: parameters,
+                                 encoding: encoding, headers: headers, interceptor: interceptor)
+            ctx.error = error
+            ctx.state = .finished
+            let request = DownloadRequest(context: ctx, session: self, destination: destination)
+            eventMonitor.send(.created(ctx))
+            eventMonitor.send(.finished(ctx))
+            trackRequest(request)
+            return request
+        }
+        return self.download(urlString, method: method, parameters: parameters,
+                             encoding: encoding, headers: headers, interceptor: interceptor,
+                             to: destination)
     }
 
     /// 断点续传下载（P1-3）
@@ -242,6 +297,25 @@ public class Session: @unchecked Sendable {
 
     // MARK: - Upload Request
 
+    /// 上传 Data — URLConvertible 重载
+    @discardableResult
+    public func upload(_ data: Data,
+                       to convertible: any URLConvertible,
+                       method: HTTPMethod = .post,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
+        let urlString: String
+        do { urlString = try convertible.asURL().absoluteString } catch {
+            let ctx = makeContext(urlString: "", method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+            ctx.error = error; ctx.state = .finished
+            let request = UploadRequest(uploadable: .data(data), context: ctx, session: self)
+            eventMonitor.send(.created(ctx)); eventMonitor.send(.finished(ctx)); trackRequest(request)
+            return request
+        }
+        return upload(data, to: urlString, method: method, headers: headers, interceptor: interceptor)
+    }
+
     /// 上传 Data（P1-1）
     @discardableResult
     public func upload(_ data: Data,
@@ -258,6 +332,25 @@ public class Session: @unchecked Sendable {
         performUploadRequest(request)
 
         return request
+    }
+
+    /// 上传本地文件 — URLConvertible 重载
+    @discardableResult
+    public func upload(fileAt fileURL: URL,
+                       to convertible: any URLConvertible,
+                       method: HTTPMethod = .post,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
+        let urlString: String
+        do { urlString = try convertible.asURL().absoluteString } catch {
+            let ctx = makeContext(urlString: "", method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+            ctx.error = error; ctx.state = .finished
+            let request = UploadRequest(uploadable: .file(fileURL), context: ctx, session: self)
+            eventMonitor.send(.created(ctx)); eventMonitor.send(.finished(ctx)); trackRequest(request)
+            return request
+        }
+        return upload(fileAt: fileURL, to: urlString, method: method, headers: headers, interceptor: interceptor)
     }
 
     /// 上传本地文件（P1-1）
@@ -278,6 +371,25 @@ public class Session: @unchecked Sendable {
         return request
     }
 
+    /// 上传输入流 — URLConvertible 重载
+    @discardableResult
+    public func upload(_ stream: InputStream,
+                       to convertible: any URLConvertible,
+                       method: HTTPMethod = .post,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
+        let urlString: String
+        do { urlString = try convertible.asURL().absoluteString } catch {
+            let ctx = makeContext(urlString: "", method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+            ctx.error = error; ctx.state = .finished
+            let request = UploadRequest(uploadable: .stream(stream), context: ctx, session: self)
+            eventMonitor.send(.created(ctx)); eventMonitor.send(.finished(ctx)); trackRequest(request)
+            return request
+        }
+        return upload(stream, to: urlString, method: method, headers: headers, interceptor: interceptor)
+    }
+
     /// 上传输入流（P1-1）
     @discardableResult
     public func upload(_ stream: InputStream,
@@ -294,6 +406,26 @@ public class Session: @unchecked Sendable {
         performUploadRequest(request)
 
         return request
+    }
+
+    /// Multipart Form Data 上传 — URLConvertible 重载
+    @discardableResult
+    public func upload(multipartFormData formDataBuilder: @escaping (MultipartFormData) -> Void,
+                       to convertible: any URLConvertible,
+                       method: HTTPMethod = .post,
+                       headers: HTTPHeaders? = nil,
+                       interceptor: (any RequestInterceptor)? = nil) -> UploadRequest {
+        let urlString: String
+        do { urlString = try convertible.asURL().absoluteString } catch {
+            let ctx = makeContext(urlString: "", method: method, parameters: nil,
+                                 encoding: .auto, headers: headers, interceptor: interceptor)
+            ctx.error = error; ctx.state = .finished
+            let request = UploadRequest(uploadable: .multipartFormData(formDataBuilder), context: ctx, session: self)
+            eventMonitor.send(.created(ctx)); eventMonitor.send(.finished(ctx)); trackRequest(request)
+            return request
+        }
+        return upload(multipartFormData: formDataBuilder, to: urlString, method: method,
+                      headers: headers, interceptor: interceptor)
     }
 
     /// Multipart Form Data 上传（P2-1 + P1-1）
