@@ -20,46 +20,45 @@
 // THE SOFTWARE.
 
 import Foundation
+@preconcurrency import AFNetworking
 
 /// 控制响应是否写入缓存，对齐 Alamofire 的 `CachedResponseHandler` 概念。
-/// AFNetworking ObjC block 为同步返回值设计。
+/// 底层实现委托给 OC 层 `AFCachedResponseHandler` 协议。
 public protocol CachedResponseHandler: Sendable {
-    /// 决定如何处理缓存响应
-    /// - Returns: 要缓存的响应（可修改），返回 `nil` 表示不缓存
     func dataTask(_ task: URLSessionDataTask,
                   willCacheResponse proposedResponse: CachedURLResponse) -> CachedURLResponse?
 }
 
 // MARK: - ResponseCacher
 
-/// 简单缓存策略实现：始终缓存或始终不缓存。
+/// 简单缓存策略实现。底层委托给 OC `AFResponseCacher`。
 public struct ResponseCacher: CachedResponseHandler, Sendable {
 
-    /// 缓存行为枚举
     public enum Behavior: Sendable {
-        /// 按建议缓存
         case cache
-        /// 不缓存
         case doNotCache
-        /// 使用自定义修改器
         case modify(@Sendable (URLSessionDataTask, CachedURLResponse) -> CachedURLResponse?)
     }
 
     public let behavior: Behavior
+    private let _cacher: AFNetworking.AFResponseCacher
 
     public init(_ behavior: Behavior) {
         self.behavior = behavior
+        switch behavior {
+        case .cache:
+            _cacher = AFNetworking.AFResponseCacher()
+        case .doNotCache:
+            _cacher = AFNetworking.AFResponseCacher.doNot()
+        case .modify(let modifier):
+            _cacher = AFNetworking.AFResponseCacher.modify { task, response in
+                modifier(task, response)
+            }
+        }
     }
 
     public func dataTask(_ task: URLSessionDataTask,
                          willCacheResponse proposedResponse: CachedURLResponse) -> CachedURLResponse? {
-        switch behavior {
-        case .cache:
-            return proposedResponse
-        case .doNotCache:
-            return nil
-        case .modify(let modifier):
-            return modifier(task, proposedResponse)
-        }
+        _cacher.dataTask(task, willCacheResponse: proposedResponse)
     }
 }

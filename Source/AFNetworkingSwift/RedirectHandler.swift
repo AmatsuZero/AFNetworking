@@ -20,11 +20,11 @@
 // THE SOFTWARE.
 
 import Foundation
+@preconcurrency import AFNetworking
 
 /// 控制 HTTP 重定向行为，对齐 Alamofire 的 `RedirectHandler` 概念。
-/// AFNetworking ObjC block 为同步返回值设计。
+/// 底层实现委托给 OC 层 `AFRedirectHandler` 协议。
 public protocol RedirectHandler: Sendable {
-    /// 处理重定向，返回要跟随的请求，返回 `nil` 表示不跟随
     func task(_ task: URLSessionTask,
               willBeRedirectedTo request: URLRequest,
               for response: HTTPURLResponse) -> URLRequest?
@@ -32,35 +32,35 @@ public protocol RedirectHandler: Sendable {
 
 // MARK: - Redirector
 
-/// 简单重定向策略实现：始终跟随、始终拒绝或自定义修改。
+/// 简单重定向策略实现。底层委托给 OC `AFRedirector`。
 public struct Redirector: RedirectHandler, Sendable {
 
-    /// 重定向行为枚举
     public enum Behavior: Sendable {
-        /// 跟随重定向（不修改请求）
         case follow
-        /// 拒绝重定向
         case doNotFollow
-        /// 使用自定义修改器
         case modify(@Sendable (URLSessionTask, URLRequest, HTTPURLResponse) -> URLRequest?)
     }
 
     public let behavior: Behavior
+    private let _redirector: AFNetworking.AFRedirector
 
     public init(_ behavior: Behavior) {
         self.behavior = behavior
+        switch behavior {
+        case .follow:
+            _redirector = .follower()
+        case .doNotFollow:
+            _redirector = .doNotFollower()
+        case .modify(let modifier):
+            _redirector = .modify { task, request, response in
+                modifier(task, request, response)
+            }
+        }
     }
 
     public func task(_ task: URLSessionTask,
                      willBeRedirectedTo request: URLRequest,
                      for response: HTTPURLResponse) -> URLRequest? {
-        switch behavior {
-        case .follow:
-            return request
-        case .doNotFollow:
-            return nil
-        case .modify(let modifier):
-            return modifier(task, request, response)
-        }
+        _redirector.task(task, willBeRedirectedTo: request, for: response)
     }
 }

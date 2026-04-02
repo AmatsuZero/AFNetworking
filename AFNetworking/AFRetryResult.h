@@ -1,4 +1,4 @@
-// HTTPMethod.swift
+// AFRetryResult.h
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,36 +19,37 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import Foundation
+#import <Foundation/Foundation.h>
 
-/// HTTP 请求方法的类型安全封装，对齐 Alamofire 的 `HTTPMethod`。
-public struct HTTPMethod: RawRepresentable, Hashable, Sendable {
-    public let rawValue: String
+NS_ASSUME_NONNULL_BEGIN
 
-    public init(rawValue: String) {
-        self.rawValue = rawValue
-    }
+/// 重试结果类型
+typedef NS_ENUM(NSInteger, AFRetryResultType) {
+    /// 执行重试
+    AFRetryResultTypeRetry,
+    /// 延迟重试
+    AFRetryResultTypeRetryWithDelay,
+    /// 不重试
+    AFRetryResultTypeDoNotRetry,
+    /// 不重试，附带错误
+    AFRetryResultTypeDoNotRetryWithError,
+};
 
-    /// HTTP GET
-    public static let get = HTTPMethod(rawValue: "GET")
-    /// HTTP HEAD
-    public static let head = HTTPMethod(rawValue: "HEAD")
-    /// HTTP POST
-    public static let post = HTTPMethod(rawValue: "POST")
-    /// HTTP PUT
-    public static let put = HTTPMethod(rawValue: "PUT")
-    /// HTTP PATCH
-    public static let patch = HTTPMethod(rawValue: "PATCH")
-    /// HTTP DELETE
-    public static let delete = HTTPMethod(rawValue: "DELETE")
-    /// HTTP CONNECT
-    public static let connect = HTTPMethod(rawValue: "CONNECT")
-    /// HTTP OPTIONS
-    public static let options = HTTPMethod(rawValue: "OPTIONS")
-    /// HTTP TRACE
-    public static let trace = HTTPMethod(rawValue: "TRACE")
-}
+/// 重试决策结果
+@interface AFRetryResult : NSObject
 
-extension HTTPMethod: CustomStringConvertible {
-    public var description: String { rawValue }
-}
+@property (nonatomic, readonly) AFRetryResultType type;
+@property (nonatomic, readonly) NSTimeInterval delay;
+@property (nonatomic, strong, readonly, nullable) NSError *error;
+
++ (instancetype)retry;
++ (instancetype)retryWithDelay:(NSTimeInterval)delay;
++ (instancetype)doNotRetry;
++ (instancetype)doNotRetryWithError:(NSError *)error;
+
+- (instancetype)init NS_UNAVAILABLE;
++ (instancetype)new NS_UNAVAILABLE;
+
+@end
+
+NS_ASSUME_NONNULL_END

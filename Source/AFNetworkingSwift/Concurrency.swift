@@ -132,7 +132,7 @@ public extension Session {
 
     /// async 发起 GET 请求并返回 Data 响应
     func data(from url: String,
-              method: HTTPMethod = .GET,
+              method: HTTPMethod = .get,
               parameters: [String: Any]? = nil,
               encoding: ParameterEncoding = .auto,
               headers: HTTPHeaders? = nil) async -> DataResponse<Data> {
@@ -144,7 +144,7 @@ public extension Session {
     /// async 发起请求并返回 Decodable 模型响应
     func decodable<T: Decodable & Sendable>(of type: T.Type,
                                              from url: String,
-                                             method: HTTPMethod = .GET,
+                                             method: HTTPMethod = .get,
                                              parameters: [String: Any]? = nil,
                                              encoding: ParameterEncoding = .auto,
                                              headers: HTTPHeaders? = nil,
@@ -156,7 +156,7 @@ public extension Session {
 
     /// async 发起请求并返回 String 响应
     func string(from url: String,
-                method: HTTPMethod = .GET,
+                method: HTTPMethod = .get,
                 parameters: [String: Any]? = nil,
                 encoding: ParameterEncoding = .auto,
                 headers: HTTPHeaders? = nil) async -> DataResponse<String> {

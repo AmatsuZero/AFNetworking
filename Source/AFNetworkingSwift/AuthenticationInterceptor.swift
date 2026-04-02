@@ -235,7 +235,7 @@ public final class AuthenticationInterceptor<AuthenticatorType: Authenticator>: 
                         completion(nil, error)
                     }
                     for (_, _, _, completion) in retries {
-                        completion(.doNotRetryWithError, error as NSError)
+                        completion(.doNotRetryWithError(error), error as NSError)
                     }
                 }
             }

@@ -20,53 +20,55 @@
 // THE SOFTWARE.
 
 import Foundation
+@preconcurrency import AFNetworking
 
-// MARK: - HTTPHeader
+// MARK: - HTTPHeader (Swift wrapper around AFHTTPHeader)
 
 /// 单个 HTTP 头字段的名值对，对齐 Alamofire 的 `HTTPHeader`。
+/// 底层实现委托给 OC 层 `AFHTTPHeader`。
 public struct HTTPHeader: Hashable, Sendable {
+    /// 底层 OC 对象
+    public let storage: AFHTTPHeader
+
     /// 头字段名称
-    public let name: String
+    public var name: String { storage.name }
     /// 头字段值
-    public let value: String
+    public var value: String { storage.value }
 
     /// 使用名称和值创建头字段
     public init(name: String, value: String) {
-        self.name = name
-        self.value = value
+        self.storage = AFHTTPHeader(name: name, value: value)
+    }
+
+    /// 从 OC 对象创建
+    public init(_ header: AFHTTPHeader) {
+        self.storage = header
     }
 
     // MARK: - 常用头字段便利构造
 
-    /// 创建 Accept 头
     public static func accept(_ value: String) -> HTTPHeader {
-        HTTPHeader(name: "Accept", value: value)
+        HTTPHeader(.accept(value))
     }
 
-    /// 创建 Content-Type 头
     public static func contentType(_ value: String) -> HTTPHeader {
-        HTTPHeader(name: "Content-Type", value: value)
+        HTTPHeader(.contentType(value))
     }
 
-    /// 创建 Authorization 头
     public static func authorization(_ value: String) -> HTTPHeader {
-        HTTPHeader(name: "Authorization", value: value)
+        HTTPHeader(.authorization(value))
     }
 
-    /// 创建 Bearer Token Authorization 头
     public static func authorization(bearerToken: String) -> HTTPHeader {
-        HTTPHeader(name: "Authorization", value: "Bearer \(bearerToken)")
+        HTTPHeader(.bearerAuthorization(bearerToken))
     }
 
-    /// 创建 Basic Authorization 头
     public static func authorization(username: String, password: String) -> HTTPHeader {
-        let credential = Data("\(username):\(password)".utf8).base64EncodedString()
-        return HTTPHeader(name: "Authorization", value: "Basic \(credential)")
+        HTTPHeader(.basicAuthorization(withUsername: username, password: password))
     }
 
-    /// 创建 User-Agent 头
     public static func userAgent(_ value: String) -> HTTPHeader {
-        HTTPHeader(name: "User-Agent", value: value)
+        HTTPHeader(.userAgent(value))
     }
 
     // MARK: - Hashable (case-insensitive name)
@@ -85,122 +87,108 @@ extension HTTPHeader: CustomStringConvertible {
     public var description: String { "\(name): \(value)" }
 }
 
-// MARK: - HTTPHeaders
+// MARK: - HTTPHeaders (Swift wrapper around AFHTTPHeaders)
 
 /// 有序 HTTP 头字段集合，对齐 Alamofire 的 `HTTPHeaders`。
-/// 值语义 struct，保持插入顺序并支持按名称去重。
+/// 底层实现委托给 OC 层 `AFHTTPHeaders`，Swift 层添加值语义和协议适配。
 public struct HTTPHeaders: Sendable {
 
-    /// 内部有序头字段数组
-    private var _headers: [HTTPHeader] = []
+    /// 底层 OC 对象
+    private var _storage: AFHTTPHeaders
 
     /// 所有头字段的有序数组
-    public var headers: [HTTPHeader] { _headers }
+    public var headers: [HTTPHeader] {
+        _storage.allHeaders.map { HTTPHeader($0) }
+    }
 
     /// 以字典形式返回所有头字段（同名取最后一个值）
     public var dictionary: [String: String] {
-        var dict = [String: String]()
-        for header in _headers {
-            dict[header.name] = header.value
-        }
-        return dict
+        _storage.dictionary as [String: String]
     }
 
     /// 头字段数量
-    public var count: Int { _headers.count }
+    public var count: Int { Int(_storage.count) }
 
     // MARK: - 初始化
 
-    /// 创建空的头集合
-    public init() {}
+    public init() {
+        _storage = AFHTTPHeaders()
+    }
 
-    /// 从头字段数组创建（同名字段后者覆盖前者）
     public init(headers: [HTTPHeader]) {
+        _storage = AFHTTPHeaders()
         for header in headers {
-            add(header)
+            _storage.add(header.storage)
         }
     }
 
-    /// 从字典创建
     public init(dictionary: [String: String]) {
-        for (name, value) in dictionary.sorted(by: { $0.key < $1.key }) {
-            _headers.append(HTTPHeader(name: name, value: value))
-        }
+        _storage = AFHTTPHeaders(dictionary: dictionary)
     }
 
-    // MARK: - 增删改查
+    // MARK: - 增删改查 (copy-on-write via mutableCopy)
 
-    /// 添加或更新头字段（同名覆盖）
+    private mutating func ensureUnique() {
+        _storage = _storage.copy() as! AFHTTPHeaders
+    }
+
     public mutating func add(_ header: HTTPHeader) {
-        if let index = _headers.firstIndex(where: { $0.name.lowercased() == header.name.lowercased() }) {
-            _headers[index] = header
-        } else {
-            _headers.append(header)
-        }
+        ensureUnique()
+        _storage.add(header.storage)
     }
 
-    /// 添加或更新头字段
     public mutating func add(name: String, value: String) {
-        add(HTTPHeader(name: name, value: value))
+        ensureUnique()
+        _storage.addName(name, value: value)
     }
 
-    /// 移除指定名称的头字段
     public mutating func remove(name: String) {
-        _headers.removeAll { $0.name.lowercased() == name.lowercased() }
+        ensureUnique()
+        _storage.removeHeader(forName: name)
     }
 
-    /// 按名称查找头字段值
     public func value(for name: String) -> String? {
-        _headers.first { $0.name.lowercased() == name.lowercased() }?.value
+        _storage.value(forHeaderName: name)
     }
 
-    /// 按名称查找头字段
     public func header(for name: String) -> HTTPHeader? {
-        _headers.first { $0.name.lowercased() == name.lowercased() }
+        guard let h = _storage.header(forName: name) else { return nil }
+        return HTTPHeader(h)
     }
 
-    /// 对指定 URLRequest 应用所有头字段
     public func apply(to request: inout URLRequest) {
-        for header in _headers {
-            request.setValue(header.value, forHTTPHeaderField: header.name)
-        }
+        let mutable = (request as NSURLRequest).mutableCopy() as! NSMutableURLRequest
+        _storage.apply(to: mutable)
+        request = mutable as URLRequest
     }
 
     // MARK: - 默认头
 
-    /// 默认头集合，包含 Accept-Encoding、Accept-Language 和 User-Agent
     public static var `default`: HTTPHeaders {
-        var headers = HTTPHeaders()
-        headers.add(HTTPHeader(name: "Accept-Encoding", value: "br;q=1.0, gzip;q=0.9, deflate;q=0.8"))
-
-        let preferredLanguages = Locale.preferredLanguages.prefix(6)
-        let languageQuality: [String] = preferredLanguages.enumerated().map { index, language in
-            let quality = 1.0 - (Double(index) * 0.1)
-            return "\(language);q=\(String(format: "%.1f", quality))"
-        }
-        headers.add(HTTPHeader(name: "Accept-Language", value: languageQuality.joined(separator: ", ")))
-
-        return headers
+        var result = HTTPHeaders()
+        result._storage = AFHTTPHeaders.default()
+        return result
     }
 }
 
 extension HTTPHeaders: Sequence {
     public func makeIterator() -> IndexingIterator<[HTTPHeader]> {
-        _headers.makeIterator()
+        headers.makeIterator()
     }
 }
 
 extension HTTPHeaders: Collection {
-    public var startIndex: Int { _headers.startIndex }
-    public var endIndex: Int { _headers.endIndex }
-    public subscript(position: Int) -> HTTPHeader { _headers[position] }
-    public func index(after i: Int) -> Int { _headers.index(after: i) }
+    public var startIndex: Int { 0 }
+    public var endIndex: Int { count }
+    public subscript(position: Int) -> HTTPHeader { headers[position] }
+    public func index(after i: Int) -> Int { i + 1 }
 }
 
 extension HTTPHeaders: ExpressibleByDictionaryLiteral {
     public init(dictionaryLiteral elements: (String, String)...) {
+        _storage = AFHTTPHeaders()
         for (name, value) in elements {
-            _headers.append(HTTPHeader(name: name, value: value))
+            _storage.addName(name, value: value)
         }
     }
 }
@@ -213,6 +201,6 @@ extension HTTPHeaders: ExpressibleByArrayLiteral {
 
 extension HTTPHeaders: CustomStringConvertible {
     public var description: String {
-        _headers.map { $0.description }.joined(separator: "\n")
+        headers.map { $0.description }.joined(separator: "\n")
     }
 }

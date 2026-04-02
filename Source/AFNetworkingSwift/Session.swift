@@ -185,7 +185,7 @@ public class Session: @unchecked Sendable {
 
     @discardableResult
     public func request(_ convertible: String,
-                        method: HTTPMethod = .GET,
+                        method: HTTPMethod = .get,
                         parameters: [String: Any]? = nil,
                         encoding: ParameterEncoding = .auto,
                         headers: HTTPHeaders? = nil,
@@ -205,7 +205,7 @@ public class Session: @unchecked Sendable {
 
     @discardableResult
     public func download(_ convertible: String,
-                         method: HTTPMethod = .GET,
+                         method: HTTPMethod = .get,
                          parameters: [String: Any]? = nil,
                          encoding: ParameterEncoding = .auto,
                          headers: HTTPHeaders? = nil,
@@ -227,7 +227,7 @@ public class Session: @unchecked Sendable {
     public func download(resumingWith resumeData: Data,
                          interceptor: (any RequestIntercepting)? = nil,
                          to destination: DownloadDestination? = nil) -> DownloadRequest {
-        let descriptor = RequestDescriptor(urlString: "", method: .GET, parameters: nil,
+        let descriptor = RequestDescriptor(urlString: "", method: .get, parameters: nil,
                                            encoding: .auto, headers: nil)
         descriptor.interceptor = interceptor
         let context = RequestContext(descriptor: descriptor)
@@ -246,7 +246,7 @@ public class Session: @unchecked Sendable {
     @discardableResult
     public func upload(_ data: Data,
                        to urlString: String,
-                       method: HTTPMethod = .POST,
+                       method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
                        interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,
@@ -264,7 +264,7 @@ public class Session: @unchecked Sendable {
     @discardableResult
     public func upload(fileAt fileURL: URL,
                        to urlString: String,
-                       method: HTTPMethod = .POST,
+                       method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
                        interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,
@@ -282,7 +282,7 @@ public class Session: @unchecked Sendable {
     @discardableResult
     public func upload(_ stream: InputStream,
                        to urlString: String,
-                       method: HTTPMethod = .POST,
+                       method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
                        interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,
@@ -300,7 +300,7 @@ public class Session: @unchecked Sendable {
     @discardableResult
     public func upload(multipartFormData formDataBuilder: @escaping (MultipartFormData) -> Void,
                        to urlString: String,
-                       method: HTTPMethod = .POST,
+                       method: HTTPMethod = .post,
                        headers: HTTPHeaders? = nil,
                        interceptor: (any RequestIntercepting)? = nil) -> UploadRequest {
         let context = makeContext(urlString: urlString, method: method, parameters: nil,

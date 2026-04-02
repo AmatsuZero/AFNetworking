@@ -20,148 +20,105 @@
 // THE SOFTWARE.
 
 import Foundation
+@preconcurrency import AFNetworking
 
-// MARK: - Error Constants
-
-/// 响应验证错误域
-public let ResponseValidationErrorDomain = "com.alamofire.error.validation"
-
-/// 响应验证错误码
-public enum ResponseValidationError: Int {
-    /// 状态码不在可接受范围内
-    case unacceptableStatusCode = -1000
-    /// Content-Type 不在可接受范围内
-    case unacceptableContentType = -1001
-    /// 自定义验证失败
-    case customValidationFailed = -1002
-}
-
-/// 验证错误 userInfo key：实际状态码
-public let ResponseValidationErrorStatusCodeKey = "com.alamofire.validation.statusCode"
-/// 验证错误 userInfo key：可接受状态码集合
-public let ResponseValidationErrorAcceptableStatusCodesKey = "com.alamofire.validation.acceptableStatusCodes"
-/// 验证错误 userInfo key：实际 Content-Type
-public let ResponseValidationErrorContentTypeKey = "com.alamofire.validation.contentType"
-/// 验证错误 userInfo key：可接受 Content-Type 集合
-public let ResponseValidationErrorAcceptableContentTypesKey = "com.alamofire.validation.acceptableContentTypes"
-
-// MARK: - ResponseValidating
+// MARK: - ResponseValidating (Swift protocol bridging AFResponseValidator)
 
 /// 响应验证器协议，对齐 Alamofire 的验证链式设计。
+/// 底层实现委托给 OC 层 `AFResponseValidator` 协议。
 public protocol ResponseValidating: Sendable {
-    /// 验证响应
-    /// - Parameters:
-    ///   - request: 原始请求
-    ///   - response: HTTP 响应
-    ///   - data: 响应数据
-    /// - Returns: 验证失败时返回错误，成功返回 nil
     func validate(_ request: URLRequest?, response: HTTPURLResponse, data: Data?) -> NSError?
+}
+
+// MARK: - OC 类型的 Swift 包装，实现 ResponseValidating
+
+/// 通用包装器：将任意 AFResponseValidator OC 对象包装为 Swift ResponseValidating
+struct ObjCResponseValidatorWrapper: ResponseValidating, @unchecked Sendable {
+    let validator: any AFResponseValidator
+
+    func validate(_ request: URLRequest?, response: HTTPURLResponse, data: Data?) -> NSError? {
+        validator.validate(request, response: response, data: data) as NSError?
+    }
 }
 
 // MARK: - StatusCodeValidator
 
-/// 验证响应状态码是否在可接受范围内。默认可接受范围为 200-299。
-public struct StatusCodeValidator: ResponseValidating {
+/// 验证响应状态码是否在可接受范围内。底层委托给 OC `AFStatusCodeValidator`。
+public struct StatusCodeValidator: ResponseValidating, @unchecked Sendable {
+    private let _validator: AFNetworking.AFStatusCodeValidator
 
-    /// 可接受的状态码集合
-    public let acceptableStatusCodes: IndexSet
-
-    /// 使用可接受状态码范围创建
-    public init(acceptableStatusCodes: IndexSet) {
-        self.acceptableStatusCodes = acceptableStatusCodes
+    public var acceptableStatusCodes: IndexSet {
+        _validator.acceptableStatusCodes as IndexSet
     }
 
-    /// 默认验证器（200-299）
+    public init(acceptableStatusCodes: IndexSet) {
+        _validator = AFNetworking.AFStatusCodeValidator(acceptableStatusCodes: acceptableStatusCodes)
+    }
+
     public static func `default`() -> StatusCodeValidator {
         StatusCodeValidator(acceptableStatusCodes: IndexSet(integersIn: 200..<300))
     }
 
     public func validate(_ request: URLRequest?, response: HTTPURLResponse, data: Data?) -> NSError? {
-        if acceptableStatusCodes.contains(response.statusCode) {
-            return nil
-        }
-
-        let userInfo: [String: Any] = [
-            NSLocalizedDescriptionKey: "Response status code was unacceptable: \(response.statusCode).",
-            ResponseValidationErrorStatusCodeKey: response.statusCode,
-            ResponseValidationErrorAcceptableStatusCodesKey: acceptableStatusCodes,
-        ]
-        return NSError(domain: ResponseValidationErrorDomain,
-                       code: ResponseValidationError.unacceptableStatusCode.rawValue,
-                       userInfo: userInfo)
+        _validator.validate(request, response: response, data: data) as NSError?
     }
 }
 
 // MARK: - ContentTypeValidator
 
-/// 验证响应 Content-Type 是否在可接受范围内。
-public struct ContentTypeValidator: ResponseValidating {
+/// 验证响应 Content-Type 是否在可接受范围内。底层委托给 OC `AFContentTypeValidator`。
+public struct ContentTypeValidator: ResponseValidating, @unchecked Sendable {
+    private let _validator: AFNetworking.AFContentTypeValidator
 
-    /// 可接受的 Content-Type 集合
-    public let acceptableContentTypes: Set<String>
+    public var acceptableContentTypes: Set<String> {
+        _validator.acceptableContentTypes as Set<String>
+    }
 
-    /// 使用可接受 Content-Type 集合创建
     public init(acceptableContentTypes: Set<String>) {
-        self.acceptableContentTypes = acceptableContentTypes
+        _validator = AFNetworking.AFContentTypeValidator(acceptableContentTypes: acceptableContentTypes)
     }
 
     public func validate(_ request: URLRequest?, response: HTTPURLResponse, data: Data?) -> NSError? {
-        guard let contentType = response.value(forHTTPHeaderField: "Content-Type") else {
-            // 没有 Content-Type 头时，如果有数据则视为不可接受
-            if let data = data, !data.isEmpty {
-                return makeError(actualContentType: "nil")
-            }
-            return nil
-        }
-
-        // 提取 MIME type（去掉参数部分，如 charset）
-        let mimeType = contentType.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? contentType
-
-        for acceptable in acceptableContentTypes {
-            if acceptable == mimeType {
-                return nil
-            }
-            // 支持通配符匹配，如 "text/*"
-            if acceptable.hasSuffix("/*") {
-                let prefix = String(acceptable.dropLast(2))
-                if mimeType.hasPrefix(prefix) {
-                    return nil
-                }
-            }
-            if acceptable == "*/*" {
-                return nil
-            }
-        }
-
-        return makeError(actualContentType: mimeType)
-    }
-
-    private func makeError(actualContentType: String) -> NSError {
-        let userInfo: [String: Any] = [
-            NSLocalizedDescriptionKey: "Response Content-Type \"\(actualContentType)\" does not match any acceptable Content-Type: \(acceptableContentTypes).",
-            ResponseValidationErrorContentTypeKey: actualContentType,
-            ResponseValidationErrorAcceptableContentTypesKey: acceptableContentTypes,
-        ]
-        return NSError(domain: ResponseValidationErrorDomain,
-                       code: ResponseValidationError.unacceptableContentType.rawValue,
-                       userInfo: userInfo)
+        _validator.validate(request, response: response, data: data) as NSError?
     }
 }
 
 // MARK: - BlockResponseValidator
 
-/// 使用 block 实现自定义验证逻辑。
-public struct BlockResponseValidator: ResponseValidating {
+/// 使用 block 实现自定义验证逻辑。底层委托给 OC `AFBlockResponseValidator`。
+public struct BlockResponseValidator: ResponseValidating, @unchecked Sendable {
     public typealias ValidationBlock = @Sendable (URLRequest?, HTTPURLResponse, Data?) -> NSError?
 
-    private let block: ValidationBlock
+    private let _validator: AFNetworking.AFBlockResponseValidator
 
-    /// 使用 block 创建验证器
     public init(block: @escaping ValidationBlock) {
-        self.block = block
+        _validator = AFNetworking.AFBlockResponseValidator { request, response, data in
+            block(request, response, data)
+        }
     }
 
     public func validate(_ request: URLRequest?, response: HTTPURLResponse, data: Data?) -> NSError? {
-        block(request, response, data)
+        _validator.validate(request, response: response, data: data) as NSError?
     }
 }
+
+// MARK: - Error Constants (re-exported from OC layer)
+
+// 这些常量已在 OC 层 AFResponseValidator.h 中定义并自动桥接到 Swift。
+// 为了保持 Swift 层 API 兼容性，提供 Swift 别名：
+
+/// 响应验证错误域
+public let ResponseValidationErrorDomain = AFNetworking.AFResponseValidationErrorDomain
+
+/// 响应验证错误码
+public enum ResponseValidationError: Int {
+    case unacceptableStatusCode = -1000
+    case unacceptableContentType = -1001
+    case customValidationFailed = -1002
+}
+
+/// 验证错误 userInfo keys
+public let ResponseValidationErrorStatusCodeKey = AFNetworking.AFResponseValidationErrorStatusCodeKey
+public let ResponseValidationErrorAcceptableStatusCodesKey = AFNetworking.AFResponseValidationErrorAcceptableStatusCodesKey
+public let ResponseValidationErrorContentTypeKey = AFNetworking.AFResponseValidationErrorContentTypeKey
+public let ResponseValidationErrorAcceptableContentTypesKey = AFNetworking.AFResponseValidationErrorAcceptableContentTypesKey

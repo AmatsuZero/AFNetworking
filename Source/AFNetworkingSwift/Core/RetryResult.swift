@@ -20,13 +20,38 @@
 // THE SOFTWARE.
 
 import Foundation
+@preconcurrency import AFNetworking
 
-/// 重试决策结果
-public enum RetryResult: Int, Sendable {
+/// 重试决策结果，对齐 Alamofire 的 `RetryResult`。
+/// 底层委托给 OC `AFRetryResult`。
+public enum RetryResult: Sendable {
     /// 执行重试
-    case retry = 0
+    case retry
+    /// 延迟重试
+    case retryWithDelay(TimeInterval)
     /// 不重试，使用原始错误
     case doNotRetry
     /// 不重试，使用指定错误
-    case doNotRetryWithError
+    case doNotRetryWithError(any Error)
+
+    /// 转为 OC AFRetryResult
+    public var objcResult: AFRetryResult {
+        switch self {
+        case .retry: return .retry()
+        case .retryWithDelay(let delay): return .retry(withDelay: delay)
+        case .doNotRetry: return .doNotRetry()
+        case .doNotRetryWithError(let error): return AFRetryResult.doNotRetryWithError(error as NSError)
+        }
+    }
+
+    /// 从 OC AFRetryResult 创建
+    public init(_ objcResult: AFRetryResult) {
+        switch objcResult.type {
+        case .retry: self = .retry
+        case .retryWithDelay: self = .retryWithDelay(objcResult.delay)
+        case .doNotRetry: self = .doNotRetry
+        case .doNotRetryWithError: self = .doNotRetryWithError(objcResult.error ?? NSError(domain: "AFNetworking", code: -1))
+        @unknown default: self = .doNotRetry
+        }
+    }
 }

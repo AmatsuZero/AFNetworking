@@ -37,5 +37,15 @@
 
     #import "AFURLSessionManager.h"
     #import "AFHTTPSessionManager.h"
+    #import "AFHTTPHeader.h"
+    #import "AFResponseValidator.h"
+    #import "AFCachedResponseHandler.h"
+    #import "AFRedirectHandler.h"
+    #import "AFRetryResult.h"
+    #import "AFServerTrustEvaluator.h"
+    #import "AFRequestDescriptor.h"
+    #import "AFRequestContext.h"
+    #import "AFRequestInterceptor.h"
+    #import "AFEventMonitor.h"
 
 #endif /* _AFNETWORKING_ */

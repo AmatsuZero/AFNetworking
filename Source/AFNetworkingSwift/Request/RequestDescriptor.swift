@@ -79,28 +79,28 @@ public class RequestDescriptor: @unchecked Sendable {
     // MARK: - 便利构造
 
     /// GET 请求
-    public static func GET(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
-        RequestDescriptor(urlString: urlString, method: .GET, parameters: parameters, headers: headers)
+    public static func get(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
+        RequestDescriptor(urlString: urlString, method: .get, parameters: parameters, headers: headers)
     }
 
     /// POST 请求
-    public static func POST(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
-        RequestDescriptor(urlString: urlString, method: .POST, parameters: parameters, headers: headers)
+    public static func post(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
+        RequestDescriptor(urlString: urlString, method: .post, parameters: parameters, headers: headers)
     }
 
     /// PUT 请求
-    public static func PUT(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
-        RequestDescriptor(urlString: urlString, method: .PUT, parameters: parameters, headers: headers)
+    public static func put(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
+        RequestDescriptor(urlString: urlString, method: .put, parameters: parameters, headers: headers)
     }
 
     /// DELETE 请求
-    public static func DELETE(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
-        RequestDescriptor(urlString: urlString, method: .DELETE, parameters: parameters, headers: headers)
+    public static func delete(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
+        RequestDescriptor(urlString: urlString, method: .delete, parameters: parameters, headers: headers)
     }
 
     /// PATCH 请求
-    public static func PATCH(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
-        RequestDescriptor(urlString: urlString, method: .PATCH, parameters: parameters, headers: headers)
+    public static func patch(_ urlString: String, parameters: Any? = nil, headers: HTTPHeaders? = nil) -> RequestDescriptor {
+        RequestDescriptor(urlString: urlString, method: .patch, parameters: parameters, headers: headers)
     }
 }
 

@@ -1,4 +1,4 @@
-// HTTPMethod.swift
+// AFRequestContext.m
 // Copyright (c) 2011–2016 Alamofire Software Foundation ( http://alamofire.org/ )
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,36 +19,49 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import Foundation
+#import "AFRequestContext.h"
+#import <os/lock.h>
 
-/// HTTP 请求方法的类型安全封装，对齐 Alamofire 的 `HTTPMethod`。
-public struct HTTPMethod: RawRepresentable, Hashable, Sendable {
-    public let rawValue: String
+@interface AFRequestContext () {
+    os_unfair_lock _lock;
+}
+@end
 
-    public init(rawValue: String) {
-        self.rawValue = rawValue
+@implementation AFRequestContext
+
+- (instancetype)initWithDescriptor:(AFRequestDescriptor *)descriptor {
+    self = [super init];
+    if (self) {
+        _descriptor = descriptor;
+        _state = AFRequestStateInitialized;
+        _createdAt = [NSDate date];
+        _identifier = [[NSUUID UUID] UUIDString];
+        _lock = OS_UNFAIR_LOCK_INIT;
     }
-
-    /// HTTP GET
-    public static let get = HTTPMethod(rawValue: "GET")
-    /// HTTP HEAD
-    public static let head = HTTPMethod(rawValue: "HEAD")
-    /// HTTP POST
-    public static let post = HTTPMethod(rawValue: "POST")
-    /// HTTP PUT
-    public static let put = HTTPMethod(rawValue: "PUT")
-    /// HTTP PATCH
-    public static let patch = HTTPMethod(rawValue: "PATCH")
-    /// HTTP DELETE
-    public static let delete = HTTPMethod(rawValue: "DELETE")
-    /// HTTP CONNECT
-    public static let connect = HTTPMethod(rawValue: "CONNECT")
-    /// HTTP OPTIONS
-    public static let options = HTTPMethod(rawValue: "OPTIONS")
-    /// HTTP TRACE
-    public static let trace = HTTPMethod(rawValue: "TRACE")
+    return self;
 }
 
-extension HTTPMethod: CustomStringConvertible {
-    public var description: String { rawValue }
+- (nullable NSData *)data {
+    os_unfair_lock_lock(&_lock);
+    NSData *data = self.mutableData ? [NSData dataWithData:self.mutableData] : nil;
+    os_unfair_lock_unlock(&_lock);
+    return data;
 }
+
+- (void)resetResponseState {
+    os_unfair_lock_lock(&_lock);
+    self.mutableData = nil;
+    self.response = nil;
+    self.fileURL = nil;
+    self.serializedObject = nil;
+    self.error = nil;
+    self.metrics = nil;
+    os_unfair_lock_unlock(&_lock);
+}
+
+- (NSString *)description {
+    return [NSString stringWithFormat:@"<AFRequestContext: %@, state: %ld, url: %@>",
+            self.identifier, (long)self.state, self.descriptor.urlString];
+}
+
+@end
