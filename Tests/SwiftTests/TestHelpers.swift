@@ -311,6 +311,16 @@ extension Session {
         let urlString = urlRequest.url?.absoluteString ?? ""
         return request(urlString, method: method, headers: headers)
     }
+
+    func streamRequest(_ endpoint: Endpoint,
+                       automaticallyCancelOnStreamError: Bool = false,
+                       interceptor: (any RequestInterceptor)? = nil) -> DataStreamRequest {
+        streamRequest(endpoint.urlString,
+                      method: endpoint.method,
+                      headers: endpoint.headers.dictionary.isEmpty ? nil : endpoint.headers,
+                      automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
+                      interceptor: interceptor)
+    }
 }
 
 // MARK: - Data Extensions

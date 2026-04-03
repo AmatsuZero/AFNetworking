@@ -39,6 +39,10 @@ public enum RequestEvent: Sendable {
     case suspended(RequestContext)
     case cancelled(RequestContext)
     case finished(RequestContext)
+    /// 流式请求收到数据块
+    case didReceiveData(RequestContext, Data)
+    /// 流式请求收到 HTTP 响应头
+    case didReceiveResponse(RequestContext, HTTPURLResponse)
 }
 
 // MARK: - Request Notification Names
@@ -83,6 +87,15 @@ public final class EventMonitor: @unchecked Sendable {
         case .finished(let ctx):
             center.notifyRequestDidFinish(ctx.storage)
             postNotification(Request.didFinishNotification, context: ctx)
+        case .didReceiveData(let ctx, let data):
+            // OC 方法 notifyRequest:didReceiveData: 与 notifyRequest:didReceiveResponse:
+            // 在 Swift 中均被重命名为 didReceive:，导致歧义。直接使用 OC selector 调用。
+            let selector = NSSelectorFromString("notifyRequest:didReceiveData:")
+            if center.responds(to: selector) {
+                center.perform(selector, with: ctx.storage, with: data as NSData)
+            }
+        case .didReceiveResponse(let ctx, let response):
+            center.notifyRequest(ctx.storage, didReceive: response)
         }
     }
 
