@@ -104,6 +104,9 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
     /// 是否在流处理器抛出错误时自动取消请求
     public let automaticallyCancelOnStreamError: Bool
 
+    /// 序列化专用队列，避免在用户队列（通常是 main）执行 CPU 密集操作
+    let serializationQueue: DispatchQueue
+
     // MARK: - 内部状态
 
     /// 流式请求的可变状态，使用 os_unfair_lock 保护（与 RequestContext 一致的模式）。
@@ -118,6 +121,8 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
         var httpResponseHandler: (queue: DispatchQueue,
                                   handler: @Sendable (_ response: HTTPURLResponse,
                                                       _ completionHandler: @escaping @Sendable (ResponseDisposition) -> Void) -> Void)?
+        /// 用于 asInputStream 的输出流
+        var outputStream: OutputStream?
     }
 
     /// 锁保护的可变状态
@@ -136,8 +141,10 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
     init(context: RequestContext,
          session: Session,
          automaticallyCancelOnStreamError: Bool,
+         serializationQueue: DispatchQueue,
          completionQueue: DispatchQueue = .main) {
         self.automaticallyCancelOnStreamError = automaticallyCancelOnStreamError
+        self.serializationQueue = serializationQueue
         super.init(context: context, session: session, completionQueue: completionQueue)
     }
 
@@ -146,9 +153,17 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
     /// 收到一个数据块时调用。将数据分发给所有已注册的流处理器。
     /// - Parameter data: 从服务器接收到的数据块。
     func didReceive(data: Data) {
-        let streams: [@Sendable (_ data: Data) -> Void] = withStreamLock { state in
+        let (streams, outputStream): ([@Sendable (_ data: Data) -> Void], OutputStream?) = withStreamLock { state in
             state.numberOfExecutingStreams += state.streams.count
-            return state.streams
+            return (state.streams, state.outputStream)
+        }
+
+        // 写入 OutputStream（供 asInputStream 消费者读取）
+        if let outputStream {
+            data.withUnsafeBytes { rawBuffer in
+                guard let pointer = rawBuffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                outputStream.write(pointer, maxLength: data.count)
+            }
         }
 
         for stream in streams {
@@ -156,13 +171,9 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
         }
     }
 
-    /// 收到 HTTP 响应头时调用。
-    /// 如果设置了 `httpResponseHandler`，将通知 handler 并根据 disposition 决定继续或取消。
-    /// - Parameters:
-    ///   - response: 收到的 HTTP 响应。
-    ///   - completionHandler: URLSession 层的 disposition 回调。
-    func didReceiveResponse(_ response: HTTPURLResponse,
-                            completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
+    /// 收到 HTTP 响应头时调用（异步通知模式，不阻塞 URLSession delegate）。
+    /// 先返回 .allow 让数据继续流入，handler 若选择 .cancel 则异步取消请求。
+    func notifyHTTPResponse(_ response: HTTPURLResponse) {
         // 保存响应头到 context，供 validate 使用
         context.response = response
 
@@ -172,23 +183,13 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
             state.httpResponseHandler
         }
 
-        guard let handler else {
-            completionHandler(.allow)
-            return
-        }
+        guard let handler else { return }
 
         handler.queue.async {
-            handler.handler(response) { disposition in
+            handler.handler(response) { [weak self] disposition in
                 if case .cancel = disposition {
-                    self.cancel()
+                    self?.cancel()
                 }
-                let sessionDisposition: URLSession.ResponseDisposition = {
-                    switch disposition {
-                    case .allow: return .allow
-                    case .cancel: return .cancel
-                    }
-                }()
-                completionHandler(sessionDisposition)
             }
         }
     }
@@ -197,6 +198,12 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
 
     /// 流结束时调用（task 完成后），由 Session 层触发。
     func streamDidComplete() {
+        // 关闭 OutputStream
+        withStreamLock { state in
+            state.outputStream?.close()
+            state.outputStream = nil
+        }
+
         let completionEvents: [@Sendable () -> Void] = withStreamLock { state in
             let events = state.enqueuedCompletionEvents
             state.enqueuedCompletionEvents.removeAll()
@@ -224,7 +231,12 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
                 error: self.performValidation() ?? self.context.error
             )
             queue.async {
-                try? stream(Stream(event: .complete(completion), token: token))
+                do {
+                    try stream(Stream(event: .complete(completion), token: token))
+                } catch {
+                    // completion handler 错误不再静默丢弃
+                    self.context.error = self.context.error ?? error
+                }
             }
         }
 
@@ -248,6 +260,41 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
 
         for event in completionEvents {
             event()
+        }
+    }
+
+    // MARK: - InputStream 支持
+
+    /// 创建一个与流式数据绑定的 InputStream。
+    /// 对齐 Alamofire 的 `DataStreamRequest.asInputStream(bufferSize:)`。
+    /// - Parameter bufferSize: 内部缓冲区大小，默认 1024 字节。
+    /// - Returns: 可读取流式数据的 InputStream，如果已调用过则返回 nil。
+    public func asInputStream(bufferSize: Int = 1024) -> InputStream? {
+        var inputStream: InputStream?
+        var outputStream: OutputStream?
+
+        Foundation.Stream.getBoundStreams(withBufferSize: bufferSize, inputStream: &inputStream, outputStream: &outputStream)
+
+        guard let input = inputStream, let output = outputStream else { return nil }
+
+        let stored = withStreamLock { state -> Bool in
+            guard state.outputStream == nil else { return false }
+            output.open()
+            state.outputStream = output
+            return true
+        }
+
+        guard stored else { return nil }
+        return input
+    }
+
+    // MARK: - 错误捕获
+
+    /// 捕获 handler 抛出的错误，存入 context 并在需要时取消请求。
+    private func captureHandlerError(_ error: Error, automaticallyCancel: Bool) {
+        context.error = context.error ?? error
+        if automaticallyCancel {
+            cancel()
         }
     }
 
@@ -299,9 +346,14 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
         stream: @escaping Handler<Data, Never>
     ) -> Self {
         let token = CancellationToken(self)
+        let automaticallyCancel = automaticallyCancelOnStreamError
         let streamClosure: @Sendable (Data) -> Void = { [weak self] data in
             queue.async {
-                try? stream(Stream(event: .stream(.success(data)), token: token))
+                do {
+                    try stream(Stream(event: .stream(.success(data)), token: token))
+                } catch {
+                    self?.captureHandlerError(error, automaticallyCancel: automaticallyCancel)
+                }
                 self?.updateAndCompleteIfPossible()
             }
         }
@@ -328,23 +380,29 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
     ) -> Self {
         let token = CancellationToken(self)
         let automaticallyCancel = automaticallyCancelOnStreamError
+        let serQueue = serializationQueue
         let streamClosure: @Sendable (Data) -> Void = { [weak self] data in
-            queue.async {
+            serQueue.async {
                 do {
                     let value = try serializer.serialize(data)
-                    do {
-                        try stream(Stream(event: .stream(.success(value)), token: token))
-                    } catch {
-                        if automaticallyCancel { self?.cancel() }
+                    queue.async {
+                        do {
+                            try stream(Stream(event: .stream(.success(value)), token: token))
+                        } catch {
+                            self?.captureHandlerError(error, automaticallyCancel: automaticallyCancel)
+                        }
+                        self?.updateAndCompleteIfPossible()
                     }
                 } catch {
-                    do {
-                        try stream(Stream(event: .stream(.failure(error)), token: token))
-                    } catch {
-                        if automaticallyCancel { self?.cancel() }
+                    queue.async {
+                        do {
+                            try stream(Stream(event: .stream(.failure(error)), token: token))
+                        } catch {
+                            self?.captureHandlerError(error, automaticallyCancel: automaticallyCancel)
+                        }
+                        self?.updateAndCompleteIfPossible()
                     }
                 }
-                self?.updateAndCompleteIfPossible()
             }
         }
 
@@ -367,10 +425,15 @@ public final class DataStreamRequest: Request, @unchecked Sendable {
         stream: @escaping Handler<String, Never>
     ) -> Self {
         let token = CancellationToken(self)
+        let automaticallyCancel = automaticallyCancelOnStreamError
         let streamClosure: @Sendable (Data) -> Void = { [weak self] data in
             queue.async {
                 let string = String(decoding: data, as: UTF8.self)
-                try? stream(Stream(event: .stream(.success(string)), token: token))
+                do {
+                    try stream(Stream(event: .stream(.success(string)), token: token))
+                } catch {
+                    self?.captureHandlerError(error, automaticallyCancel: automaticallyCancel)
+                }
                 self?.updateAndCompleteIfPossible()
             }
         }

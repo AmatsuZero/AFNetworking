@@ -112,6 +112,9 @@ public class Session: @unchecked Sendable {
     /// 流式请求映射：taskIdentifier → DataStreamRequest，用于数据路由
     private var streamRequests: [Int: DataStreamRequest] = [:]
 
+    /// 流式请求序列化专用队列，避免在主线程执行 CPU 密集操作
+    private let serializationQueue = DispatchQueue(label: "com.alamofire.afnetworking.session.serialization.\(UUID().uuidString)")
+
     // MARK: - 初始化
 
     /// 创建 Session
@@ -176,6 +179,8 @@ public class Session: @unchecked Sendable {
         }
 
         // 流式请求：将 didReceiveResponse 路由到 DataStreamRequest
+        // 不使用 semaphore 同步等待（避免死锁风险），而是先返回 .allow，
+        // 在 handler 中若用户选择 .cancel 则异步取消请求（与 Alamofire 模式一致）
         sessionManager.setDataTaskDidReceiveResponseBlock { [weak self] _, task, response in
             guard let self else { return .allow }
             self.requestLock.lock()
@@ -186,15 +191,13 @@ public class Session: @unchecked Sendable {
                 return .allow
             }
 
-            // 同步等待 disposition 结果
-            let semaphore = DispatchSemaphore(value: 0)
-            nonisolated(unsafe) var disposition: URLSession.ResponseDisposition = .allow
-            streamRequest.didReceiveResponse(httpResponse) { result in
-                disposition = result
-                semaphore.signal()
-            }
-            semaphore.wait()
-            return disposition
+            // 保存响应头到 context
+            streamRequest.context.response = httpResponse
+
+            // 读取 handler（不阻塞，先 allow 再异步处理）
+            streamRequest.notifyHTTPResponse(httpResponse)
+
+            return .allow
         }
 
         // 流式请求：task 完成时触发 streamDidComplete 和清理
@@ -519,7 +522,8 @@ public class Session: @unchecked Sendable {
         let context = makeContext(urlString: convertible, method: method, parameters: nil,
                                  encoding: .auto, headers: headers, interceptor: interceptor)
         let request = DataStreamRequest(context: context, session: self,
-                                        automaticallyCancelOnStreamError: automaticallyCancelOnStreamError)
+                                        automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
+                                        serializationQueue: serializationQueue)
 
         eventMonitor.send(.created(context))
         trackRequest(request)
@@ -544,7 +548,8 @@ public class Session: @unchecked Sendable {
             ctx.error = error
             ctx.state = .finished
             let request = DataStreamRequest(context: ctx, session: self,
-                                            automaticallyCancelOnStreamError: automaticallyCancelOnStreamError)
+                                            automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
+                                            serializationQueue: serializationQueue)
             eventMonitor.send(.created(ctx))
             eventMonitor.send(.finished(ctx))
             trackRequest(request)
@@ -576,7 +581,8 @@ public class Session: @unchecked Sendable {
             ctx.error = error
             ctx.state = .finished
             let req = DataStreamRequest(context: ctx, session: self,
-                                        automaticallyCancelOnStreamError: automaticallyCancelOnStreamError)
+                                        automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
+                                        serializationQueue: serializationQueue)
             eventMonitor.send(.created(ctx))
             eventMonitor.send(.finished(ctx))
             trackRequest(req)
@@ -599,7 +605,8 @@ public class Session: @unchecked Sendable {
             ctx.error = error
             ctx.state = .finished
             let req = DataStreamRequest(context: ctx, session: self,
-                                        automaticallyCancelOnStreamError: automaticallyCancelOnStreamError)
+                                        automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
+                                        serializationQueue: serializationQueue)
             eventMonitor.send(.created(ctx))
             eventMonitor.send(.finished(ctx))
             trackRequest(req)
@@ -608,6 +615,40 @@ public class Session: @unchecked Sendable {
 
         let finalURLString = urlRequest.url?.absoluteString ?? url.absoluteString
         return self.streamRequest(finalURLString, method: method, headers: headers,
+                                  automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
+                                  interceptor: interceptor)
+    }
+
+    /// URLRequestConvertible 重载 — 接受预构建的 URLRequest。
+    /// 对齐 Alamofire 的 `Session.streamRequest(_:automaticallyCancelOnStreamError:interceptor:)`。
+    @discardableResult
+    public func streamRequest(_ convertible: any URLRequestConvertible,
+                              automaticallyCancelOnStreamError: Bool = false,
+                              interceptor: (any RequestInterceptor)? = nil) -> DataStreamRequest {
+        let urlRequest: URLRequest
+        do {
+            urlRequest = try convertible.asURLRequest()
+        } catch {
+            let ctx = makeContext(urlString: "", method: .get, parameters: nil,
+                                 encoding: .auto, headers: nil, interceptor: interceptor)
+            ctx.error = error
+            ctx.state = .finished
+            let req = DataStreamRequest(context: ctx, session: self,
+                                        automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
+                                        serializationQueue: serializationQueue)
+            eventMonitor.send(.created(ctx))
+            eventMonitor.send(.finished(ctx))
+            trackRequest(req)
+            return req
+        }
+
+        let method = HTTPMethod(rawValue: urlRequest.httpMethod ?? "GET")
+        let urlString = urlRequest.url?.absoluteString ?? ""
+        var headers: HTTPHeaders? = nil
+        if let fields = urlRequest.allHTTPHeaderFields, !fields.isEmpty {
+            headers = HTTPHeaders(dictionary: fields)
+        }
+        return self.streamRequest(urlString, method: method, headers: headers,
                                   automaticallyCancelOnStreamError: automaticallyCancelOnStreamError,
                                   interceptor: interceptor)
     }
@@ -691,22 +732,50 @@ public class Session: @unchecked Sendable {
                 }
             }
 
-            // 使用底层 URLSession 直接创建 dataTask，绕过 AFHTTPSessionManager 的
-            // success/failure 回调（因为流式请求不等待完整响应）
-            let session = self.sessionManager.session
-            let task = session.dataTask(with: urlRequest)
-
-            // 注册到 streamRequests 映射表，以便 didReceiveData block 路由数据
-            self.requestLock.lock()
-            self.streamRequests[task.taskIdentifier] = request
-            self.requestLock.unlock()
-
-            context.task = task
-            context.state = .resumed
-            task.resume()
-
-            self.eventMonitor.send(.resumed(context))
+            // 接入拦截器管线：调用 interceptor adapt
+            let interceptor = descriptor.interceptor ?? self.interceptor
+            if let interceptor {
+                interceptor.adaptRequest(urlRequest) { [weak self] adaptedRequest, error in
+                    guard let self else { return }
+                    self.rootQueue.async {
+                        if let error {
+                            context.error = error
+                            context.state = .finished
+                            self.eventMonitor.send(.finished(context))
+                            self.requestLock.lock()
+                            self.activeRequests.removeValue(forKey: request.id)
+                            self.requestLock.unlock()
+                            request.streamDidComplete()
+                            return
+                        }
+                        let finalRequest = adaptedRequest ?? urlRequest
+                        context.currentRequest = finalRequest
+                        self.createAndResumeStreamTask(request: request, urlRequest: finalRequest)
+                    }
+                }
+            } else {
+                context.currentRequest = urlRequest
+                self.createAndResumeStreamTask(request: request, urlRequest: urlRequest)
+            }
         }
+    }
+
+    /// 创建 data task 并注册到 streamRequests 映射表
+    private func createAndResumeStreamTask(request: DataStreamRequest, urlRequest: URLRequest) {
+        let context = request.context
+        let session = self.sessionManager.session
+        let task = session.dataTask(with: urlRequest)
+
+        // 注册到 streamRequests 映射表，以便 didReceiveData block 路由数据
+        self.requestLock.lock()
+        self.streamRequests[task.taskIdentifier] = request
+        self.requestLock.unlock()
+
+        context.task = task
+        context.state = .resumed
+        task.resume()
+
+        self.eventMonitor.send(.resumed(context))
     }
 
     private func performDownloadRequest(_ request: DownloadRequest) {

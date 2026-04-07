@@ -411,6 +411,139 @@ final class DataStreamRequestTests: BaseTestCase {
         XCTAssertGreaterThan(chunks2.count, 0)
         XCTAssertEqual(chunks1.count, chunks2.count, "Both handlers should receive same number of chunks")
     }
+
+    // MARK: - Step 1 验证：序列化不在主线程
+
+    @MainActor
+    func testThatSerializationDoesNotRunOnMainQueue() {
+        // Given
+        let endpoint = streamEndpoint(1)
+        let expectation = expectation(description: "serialization should not run on main")
+        var serializedOnMain = true
+
+        // 自定义序列化器，记录执行线程
+        struct ThreadCheckSerializer: DataStreamSerializer {
+            let onSerialize: @Sendable (Bool) -> Void
+            func serialize(_ data: Data) throws -> Data {
+                onSerialize(Thread.isMainThread)
+                return data
+            }
+        }
+
+        let serializer = ThreadCheckSerializer { isMain in
+            serializedOnMain = isMain
+        }
+
+        // When
+        session.streamRequest(endpoint)
+            .responseStream(using: serializer) { stream in
+                if case .complete = stream.event {
+                    expectation.fulfill()
+                }
+            }
+
+        waitForExpectations(timeout: timeout)
+
+        // Then
+        XCTAssertFalse(serializedOnMain, "Serialization should NOT run on main thread")
+    }
+
+    // MARK: - Step 2 验证：拦截器 adapt 被调用
+
+    @MainActor
+    func testThatInterceptorAdaptIsCalled() {
+        // Given
+        let endpoint = streamEndpoint(1)
+        let expectation = expectation(description: "interceptor adapt should be called")
+        var adaptWasCalled = false
+
+        struct TestInterceptor: RequestInterceptor {
+            let onAdapt: @Sendable () -> Void
+            func adaptRequest(_ request: URLRequest, completion: @escaping @Sendable (URLRequest?, (any Error)?) -> Void) {
+                onAdapt()
+                completion(request, nil)
+            }
+            func shouldRetry(_ request: URLRequest, withError error: any Error, retryCount: UInt, completion: @escaping @Sendable (RetryResult, (any Error)?) -> Void) {
+                completion(.doNotRetry, nil)
+            }
+        }
+
+        let interceptor = TestInterceptor {
+            adaptWasCalled = true
+        }
+
+        // When
+        session.streamRequest(endpoint, interceptor: interceptor)
+            .responseStream { stream in
+                if case .complete = stream.event {
+                    expectation.fulfill()
+                }
+            }
+
+        waitForExpectations(timeout: timeout)
+
+        // Then
+        XCTAssertTrue(adaptWasCalled, "Interceptor adapt should have been called")
+    }
+
+    // MARK: - Step 3 验证：handler 错误被捕获
+
+    @MainActor
+    func testThatHandlerErrorIsCaptured() {
+        // Given
+        let endpoint = streamEndpoint(1)
+        let expectation = expectation(description: "handler error should be captured")
+        var streamCompletion: DataStreamRequest.Completion?
+
+        struct HandlerError: Error {}
+
+        // When — handler 抛出错误
+        session.streamRequest(endpoint, automaticallyCancelOnStreamError: true)
+            .responseStream { stream in
+                switch stream.event {
+                case .stream:
+                    throw HandlerError()
+                case .complete(let completion):
+                    streamCompletion = completion
+                    expectation.fulfill()
+                }
+            }
+
+        waitForExpectations(timeout: timeout)
+
+        // Then — 错误应被捕获（请求被取消或 error 不为 nil）
+        XCTAssertNotNil(streamCompletion)
+        // automaticallyCancelOnStreamError=true，错误应导致取消
+        XCTAssertNotNil(streamCompletion?.error, "Handler error should be captured in completion")
+    }
+
+    // MARK: - Step 6 验证：静态序列化器工厂
+
+    @MainActor
+    func testThatStaticSerializerFactoriesCompileAndWork() {
+        // Given
+        let endpoint = streamEndpoint(1)
+        let expectation = expectation(description: "static factory should work")
+        var receivedData = false
+
+        // When — 使用 .passthrough 静态工厂
+        session.streamRequest(endpoint)
+            .responseStream(using: .passthrough) { stream in
+                switch stream.event {
+                case .stream(let result):
+                    if case .success = result {
+                        receivedData = true
+                    }
+                case .complete:
+                    expectation.fulfill()
+                }
+            }
+
+        waitForExpectations(timeout: timeout)
+
+        // Then
+        XCTAssertTrue(receivedData, "Should receive data via .passthrough factory")
+    }
 }
 
 // MARK: - 测试辅助类型

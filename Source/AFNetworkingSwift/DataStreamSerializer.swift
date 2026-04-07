@@ -79,3 +79,26 @@ public struct DecodableStreamSerializer<T: Decodable & Sendable>: DataStreamSeri
         return try decoder.decode(T.self, from: preprocessed)
     }
 }
+
+// MARK: - 静态工厂便利方法
+
+extension DataStreamSerializer where Self == PassthroughStreamSerializer {
+    /// 直通序列化器，直接返回原始 Data。
+    public static var passthrough: PassthroughStreamSerializer { .init() }
+}
+
+extension DataStreamSerializer where Self == StringStreamSerializer {
+    /// 字符串序列化器，将数据块解码为 UTF8 字符串。
+    public static var string: StringStreamSerializer { .init() }
+}
+
+extension DataStreamSerializer {
+    /// Decodable 序列化器，将数据块解码为指定类型。
+    public static func decodable<T: Decodable & Sendable>(
+        of type: T.Type,
+        decoder: any DataDecoder = JSONDecoder(),
+        preprocessor: any DataPreprocessor = PassthroughPreprocessor()
+    ) -> Self where Self == DecodableStreamSerializer<T> {
+        .init(decoder: decoder, preprocessor: preprocessor)
+    }
+}
